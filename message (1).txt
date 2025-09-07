@@ -1,0 +1,1153 @@
+
+// package.json
+{
+  "name": "geo-guardian-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "^18",
+    "react-dom": "^18",
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "next-auth": "^4.24.7",
+    "zustand": "^4.5.4",
+    "axios": "^1.7.2",
+    "@tanstack/react-query": "^5.45.1",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^4.2.1",
+    "react-leaflet-draw": "^0.20.4",
+    "@types/leaflet": "^1.9.12",
+    "leaflet-draw": "^1.0.4",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38"
+  },
+  "devDependencies": {
+    "eslint": "^8",
+    "eslint-config-next": "14.2.5"
+  }
+}
+
+// tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50: '#f0f9ff',
+          500: '#0ea5e9',
+          600: '#0284c7',
+          700: '#0369a1',
+        },
+        success: {
+          500: '#22c55e',
+          600: '#16a34a',
+        },
+        warning: {
+          500: '#f59e0b',
+          600: '#d97706',
+        },
+        danger: {
+          500: '#ef4444',
+          600: '#dc2626',
+        }
+      }
+    },
+  },
+  plugins: [],
+}
+
+// postcss.config.js
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    appDir: true,
+  },
+  images: {
+    domains: ['lh3.googleusercontent.com'],
+  },
+}
+
+module.exports = nextConfig
+
+// app/globals.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import 'leaflet/dist/leaflet.css';
+@import 'leaflet-draw/dist/leaflet.draw.css';
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+
+// app/layout.tsx
+import { Inter } from 'next/font/google'
+import './globals.css'
+import { Providers } from './providers'
+
+const inter = Inter({ subsets: ['latin'] })
+
+export const metadata = {
+  title: 'GeoGuardian - Environmental Monitoring',
+  description: 'Plug-and-play environmental monitoring with satellite data',
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>
+        <Providers>
+          {children}
+        </Providers>
+      </body>
+    </html>
+  )
+}
+
+// app/providers.tsx
+'use client'
+
+import { SessionProvider } from 'next-auth/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useState } from 'react'
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60 * 1000,
+        refetchOnWindowFocus: false,
+      },
+    },
+  }))
+
+  return (
+    <SessionProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    </SessionProvider>
+  )
+}
+
+// lib/auth.ts
+import { NextAuthOptions } from 'next-auth'
+import GoogleProvider from 'next-auth/providers/google'
+
+export const authOptions: NextAuthOptions = {
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+  ],
+  pages: {
+    signIn: '/login',
+  },
+  callbacks: {
+    async session({ session, token }) {
+      session.user.id = token.sub!
+      return session
+    },
+    async jwt({ token, user }) {
+      if (user) {
+        token.sub = user.id
+      }
+      return token
+    },
+  },
+}
+
+// app/api/auth/[...nextauth]/route.ts
+import NextAuth from 'next-auth'
+import { authOptions } from '@/lib/auth'
+
+const handler = NextAuth(authOptions)
+
+export { handler as GET, handler as POST }
+
+// lib/store.ts
+import { create } from 'zustand'
+
+interface AOI {
+  id: string
+  name: string
+  geometry: any
+  status: 'monitoring' | 'alert' | 'inactive'
+  lastAlert?: Date
+}
+
+interface Alert {
+  id: string
+  aoiId: string
+  type: 'algal_bloom' | 'trash_dump' | 'illegal_construction' | 'other'
+  confidence: number
+  gifUrl: string
+  timestamp: Date
+  verified?: 'agree' | 'dismiss'
+}
+
+interface AppState {
+  selectedAOI: AOI | null
+  aois: AOI[]
+  alerts: Alert[]
+  isLoading: boolean
+  error: string | null
+  
+  // Actions
+  setSelectedAOI: (aoi: AOI | null) => void
+  setAOIs: (aois: AOI[]) => void
+  addAOI: (aoi: AOI) => void
+  setAlerts: (alerts: Alert[]) => void
+  setLoading: (loading: boolean) => void
+  setError: (error: string | null) => void
+}
+
+export const useAppStore = create<AppState>((set) => ({
+  selectedAOI: null,
+  aois: [],
+  alerts: [],
+  isLoading: false,
+  error: null,
+  
+  setSelectedAOI: (aoi) => set({ selectedAOI: aoi }),
+  setAOIs: (aois) => set({ aois }),
+  addAOI: (aoi) => set((state) => ({ aois: [...state.aois, aoi] })),
+  setAlerts: (alerts) => set({ alerts }),
+  setLoading: (loading) => set({ isLoading: loading }),
+  setError: (error) => set({ error }),
+}))
+
+// lib/api.ts
+import axios from 'axios'
+
+const api = axios.create({
+  baseURL: '/api/v1',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+// Add auth token to requests
+api.interceptors.request.use((config) => {
+  // Add auth token logic here when needed
+  return config
+})
+
+export const aoiAPI = {
+  getAll: () => api.get('/aoi'),
+  create: (data: { name: string; geometry: any }) => api.post('/aoi', data),
+  delete: (id: string) => api.delete(`/aoi/${id}`),
+  getAlerts: (aoiId: string) => api.get(`/aoi/${aoiId}/alerts`),
+  verifyAlert: (alertId: string, verification: 'agree' | 'dismiss') => 
+    api.post(`/alerts/${alertId}/verify`, { verification }),
+}
+
+// app/login/page.tsx
+'use client'
+
+import { signIn, getSession } from 'next-auth/react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+
+export default function LoginPage() {
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    // Check if user is already logged in
+    getSession().then((session) => {
+      if (session) {
+        router.push('/')
+      }
+    })
+  }, [router])
+
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true)
+    try {
+      await signIn('google', { callbackUrl: '/' })
+    } catch (error) {
+      console.error('Sign in error:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center">
+      <div className="max-w-md w-full mx-4">
+        <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+          {/* Logo and Title */}
+          <div className="mb-8">
+            <div className="w-16 h-16 bg-primary-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">GeoGuardian</h1>
+            <p className="text-gray-600">Environmental monitoring with satellite data</p>
+          </div>
+
+          {/* Features */}
+          <div className="mb-8 space-y-3 text-sm text-gray-600">
+            <div className="flex items-center justify-center space-x-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span>10-meter resolution monitoring</span>
+            </div>
+            <div className="flex items-center justify-center space-x-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span>90-second alert system</span>
+            </div>
+            <div className="flex items-center justify-center space-x-2">
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+              <span>Up to 5 monitoring areas</span>
+            </div>
+          </div>
+
+          {/* Sign In Button */}
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+            className="w-full bg-white border-2 border-gray-200 text-gray-700 py-3 px-6 rounded-lg font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center justify-center space-x-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-900"></div>
+            ) : (
+              <>
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                <span>Sign in with Google</span>
+              </>
+            )}
+          </button>
+
+          <p className="mt-6 text-xs text-gray-500">
+            By signing in, you agree to our Terms of Service and Privacy Policy
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// components/MapManager.tsx
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { MapContainer, TileLayer } from 'react-leaflet'
+import { FeatureGroup } from 'react-leaflet'
+import { EditControl } from 'react-leaflet-draw'
+import L from 'leaflet'
+import { useAppStore } from '@/lib/store'
+import { aoiAPI } from '@/lib/api'
+
+// Fix Leaflet default markers
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: '/leaflet/marker-icon-2x.png',
+  iconUrl: '/leaflet/marker-icon.png',
+  shadowUrl: '/leaflet/marker-shadow.png',
+})
+
+interface NewAOIModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (name: string) => void
+  loading: boolean
+}
+
+function NewAOIModal({ isOpen, onClose, onSubmit, loading }: NewAOIModalProps) {
+  const [name, setName] = useState('')
+
+  if (!isOpen) return null
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (name.trim()) {
+      onSubmit(name.trim())
+      setName('')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000]">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+        <h3 className="text-lg font-semibold mb-4">Name Your Monitoring Area</h3>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Enter area name..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            autoFocus
+            disabled={loading}
+          />
+          <div className="flex justify-end space-x-3 mt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!name.trim() || loading}
+              className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 flex items-center space-x-2"
+            >
+              {loading && (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              )}
+              <span>Create AOI</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+export default function MapManager() {
+  const [showModal, setShowModal] = useState(false)
+  const [pendingGeometry, setPendingGeometry] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const featureGroupRef = useRef<L.FeatureGroup>(null)
+  const mapRef = useRef<L.Map>(null)
+  
+  const { aois, addAOI, selectedAOI, setError } = useAppStore()
+
+  // Focus on selected AOI
+  useEffect(() => {
+    if (selectedAOI && mapRef.current) {
+      const bounds = L.geoJSON(selectedAOI.geometry).getBounds()
+      mapRef.current.fitBounds(bounds, { padding: [20, 20] })
+    }
+  }, [selectedAOI])
+
+  const handleCreated = (e: any) => {
+    const layer = e.layer
+    const geometry = layer.toGeoJSON().geometry
+    
+    // Limit to 5 AOIs
+    if (aois.length >= 5) {
+      setError('Maximum 5 monitoring areas allowed')
+      return
+    }
+    
+    setPendingGeometry(geometry)
+    setShowModal(true)
+    
+    // Remove the drawn layer temporarily
+    if (featureGroupRef.current) {
+      featureGroupRef.current.removeLayer(layer)
+    }
+  }
+
+  const handleCreateAOI = async (name: string) => {
+    if (!pendingGeometry) return
+    
+    setIsLoading(true)
+    try {
+      const response = await aoiAPI.create({
+        name,
+        geometry: pendingGeometry,
+      })
+      
+      addAOI({
+        id: response.data.id,
+        name,
+        geometry: pendingGeometry,
+        status: 'monitoring',
+      })
+      
+      setShowModal(false)
+      setPendingGeometry(null)
+      setError(null)
+    } catch (error) {
+      console.error('Error creating AOI:', error)
+      setError('Failed to create monitoring area')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="relative h-full">
+      <MapContainer
+        ref={mapRef}
+        center={[20.0, 77.0]} // Center of India
+        zoom={6}
+        className="h-full w-full"
+      >
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        />
+        
+        <FeatureGroup ref={featureGroupRef}>
+          <EditControl
+            position="topright"
+            onCreated={handleCreated}
+            draw={{
+              rectangle: false,
+              circle: false,
+              circlemarker: false,
+              marker: false,
+              polyline: false,
+              polygon: {
+                allowIntersection: false,
+                showArea: true,
+                drawError: {
+                  color: '#e1e100',
+                  message: '<strong>Area cannot intersect!</strong>',
+                },
+              },
+            }}
+            edit={{
+              remove: false,
+              edit: false,
+            }}
+          />
+        </FeatureGroup>
+
+        {/* Render existing AOIs */}
+        {aois.map((aoi) => (
+          <FeatureGroup key={aoi.id}>
+            {/* This would render the AOI geometry */}
+          </FeatureGroup>
+        ))}
+      </MapContainer>
+
+      <NewAOIModal
+        isOpen={showModal}
+        onClose={() => {
+          setShowModal(false)
+          setPendingGeometry(null)
+        }}
+        onSubmit={handleCreateAOI}
+        loading={isLoading}
+      />
+    </div>
+  )
+}
+
+// components/AOIList.tsx
+'use client'
+
+import { useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useAppStore } from '@/lib/store'
+import { aoiAPI } from '@/lib/api'
+
+const statusIcons = {
+  monitoring: (
+    <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+  ),
+  alert: (
+    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+  ),
+  inactive: (
+    <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
+  ),
+}
+
+const statusText = {
+  monitoring: 'Monitoring',
+  alert: 'Alert Found',
+  inactive: 'Inactive',
+}
+
+export default function AOIList() {
+  const { aois, setAOIs, selectedAOI, setSelectedAOI, setLoading, setError } = useAppStore()
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['aois'],
+    queryFn: async () => {
+      const response = await aoiAPI.getAll()
+      return response.data
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  })
+
+  useEffect(() => {
+    if (data) {
+      setAOIs(data)
+    }
+  }, [data, setAOIs])
+
+  useEffect(() => {
+    setLoading(isLoading)
+    if (error) {
+      setError('Failed to load monitoring areas')
+    }
+  }, [isLoading, error, setLoading, setError])
+
+  if (selectedAOI) {
+    return null // AOI selected, AlertViewer will be shown instead
+  }
+
+  return (
+    <div className="h-full bg-white border-l border-gray-200">
+      <div className="p-4 border-b border-gray-200">
+        <h2 className="text-lg font-semibold text-gray-900">Monitoring Areas</h2>
+        <p className="text-sm text-gray-600 mt-1">
+          {aois.length}/5 areas active
+        </p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {isLoading && aois.length === 0 ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500"></div>
+          </div>
+        ) : aois.length === 0 ? (
+          <div className="p-4 text-center text-gray-500">
+            <div className="mb-4">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m-6 3l6-3" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-medium text-gray-900 mb-1">No monitoring areas</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Draw a polygon on the map to start monitoring an area
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2 p-4">
+            {aois.map((aoi) => (
+              <div
+                key={aoi.id}
+                onClick={() => setSelectedAOI(aoi)}
+                className="p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-colors"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-medium text-gray-900 truncate">{aoi.name}</h3>
+                  {statusIcons[aoi.status]}
+                </div>
+                <p className="text-sm text-gray-600">{statusText[aoi.status]}</p>
+                {aoi.lastAlert && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Last alert: {new Date(aoi.lastAlert).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// components/AlertViewer.tsx
+'use client'
+
+import { useQuery } from '@tanstack/react-query'
+import { useAppStore } from '@/lib/store'
+import { aoiAPI } from '@/lib/api'
+import { useState } from 'react'
+
+const alertTypeLabels = {
+  algal_bloom: 'Algal Bloom',
+  trash_dump: 'Trash Dump',
+  illegal_construction: 'Illegal Construction',
+  other: 'Other Anomaly',
+}
+
+const alertTypeColors = {
+  algal_bloom: 'text-green-600 bg-green-100',
+  trash_dump: 'text-orange-600 bg-orange-100',
+  illegal_construction: 'text-red-600 bg-red-100',
+  other: 'text-gray-600 bg-gray-100',
+}
+
+export default function AlertViewer() {
+  const { selectedAOI, setSelectedAOI } = useAppStore()
+  const [verifyingAlert, setVerifyingAlert] = useState<string | null>(null)
+
+  const { data: alerts, isLoading, refetch } = useQuery({
+    queryKey: ['alerts', selectedAOI?.id],
+    queryFn: async () => {
+      if (!selectedAOI) return []
+      const response = await aoiAPI.getAlerts(selectedAOI.id)
+      return response.data
+    },
+    enabled: !!selectedAOI,
+  })
+
+  const handleVerifyAlert = async (alertId: string, verification: 'agree' | 'dismiss') => {
+    setVerifyingAlert(alertId)
+    try {
+      await aoiAPI.verifyAlert(alertId, verification)
+      refetch()
+    } catch (error) {
+      console.error('Error verifying alert:', error)
+    } finally {
+      setVerifyingAlert(null)
+    }
+  }
+
+  if (!selectedAOI) return null
+
+  const latestAlert = alerts?.[0]
+
+  return (
+    <div className="h-full bg-white border-l border-gray-200">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between mb-2">
+          <button
+            onClick={() => setSelectedAOI(null)}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h2 className="text-lg font-semibold text-gray-900 truncate">{selectedAOI.name}</h2>
+        </div>
+        <p className="text-sm text-gray-600">
+          {alerts?.length || 0} alerts found
+        </p>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500"></div>
+          </div>
+        ) : !latestAlert ? (
+          <div className="text-center text-gray-500">
+            <div className="mb-4">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-medium text-gray-900 mb-1">No alerts</h3>
+            <p className="text-sm text-gray-500">
+              This area is being monitored. You'll be notified of any anomalies.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Latest Alert GIF */}
+            <div className="bg-gray-100 rounded-lg overflow-hidden">
+              <img
+                src={latestAlert.gifUrl}
+                alt="Alert visualization"
+                className="w-full h-48 object-cover"
+              />
+            </div>
+
+            {/* Alert Details */}
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${alertTypeColors[latestAlert.type]}`}>
+                    {alertTypeLabels[latestAlert.type]}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {new Date(latestAlert.timestamp).toLocaleDateString()}
+                  </span>
+                </div>
+                
+                <div className="flex items-center space-x-2 mb-4">
+                  <span className="text-sm text-gray-600">Confidence:</span>
+                  <div className="flex-1 bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full ${
+                        latestAlert.confidence >= 0.8 ? 'bg-red-500' :
+                        latestAlert.confidence >= 0.6 ? 'bg-orange-500' :
+                        'bg-yellow-500'
+                      }`}
+                      style={{ width: `${latestAlert.confidence * 100}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">
+                    {Math.round(latestAlert.confidence * 100)}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Verification Buttons */}
+              {!latestAlert.verified && (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">
+                    Help improve our detection accuracy:
+                  </p>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => handleVerifyAlert(latestAlert.id, 'agree')}
+                      disabled={verifyingAlert === latestAlert.id}
+                      className="flex-1 bg-success-500 text-white py-2 px-4 rounded-lg hover:bg-success-600 disabled:opacity-50 flex items-center justify-center space-x-2"
+                    >
+                      {verifyingAlert === latestAlert.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span>Agree</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleVerifyAlert(latestAlert.id, 'dismiss')}
+                      disabled={verifyingAlert === latestAlert.id}
+                      className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 disabled:opacity-50 flex items-center justify-center space-x-2"
+                    >
+                      {verifyingAlert === latestAlert.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          <span>Dismiss</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {latestAlert.verified && (
+                <div className={`p-3 rounded-lg ${
+                  latestAlert.verified === 'agree' 
+                    ? 'bg-success-50 text-success-700' 
+                    : 'bg-gray-50 text-gray-700'
+                }`}>
+                  <div className="flex items-center space-x-2">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" />
+                    </svg>
+                    <span className="text-sm font-medium">
+                      Alert {latestAlert.verified === 'agree' ? 'confirmed' : 'dismissed'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Previous Alerts */}
+            {alerts.length > 1 && (
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="text-sm font-medium text-gray-900 mb-3">Previous Alerts</h3>
+                <div className="space-y-2">
+                  {alerts.slice(1, 4).map((alert) => (
+                    <div key={alert.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div className="flex items-center space-x-2">
+                        <span className={`px-2 py-1 rounded-full text-xs ${alertTypeColors[alert.type]}`}>
+                          {alertTypeLabels[alert.type]}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {Math.round(alert.confidence * 100)}%
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {new Date(alert.timestamp).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// app/page.tsx
+'use client'
+
+import { useSession, signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+import dynamic from 'next/dynamic'
+import AOIList from '@/components/AOIList'
+import AlertViewer from '@/components/AlertViewer'
+import { useAppStore } from '@/lib/store'
+
+// Dynamically import MapManager to avoid SSR issues with Leaflet
+const MapManager = dynamic(() => import('@/components/MapManager'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full bg-gray-100 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading map...</p>
+      </div>
+    </div>
+  ),
+})
+
+export default function Dashboard() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const { selectedAOI, error, setError } = useAppStore()
+
+  useEffect(() => {
+    if (status === 'loading') return
+    if (!session) {
+      router.push('/login')
+    }
+  }, [session, status, router])
+
+  const handleSignOut = () => {
+    signOut({ callbackUrl: '/login' })
+  }
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return null
+  }
+
+  return (
+    <div className="h-screen bg-gray-100 flex flex-col">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">GeoGuardian</h1>
+              <p className="text-sm text-gray-600">Environmental Monitoring Dashboard</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              {session.user?.image && (
+                <img
+                  src={session.user.image}
+                  alt="Profile"
+                  className="w-8 h-8 rounded-full"
+                />
+              )}
+              <span className="text-sm text-gray-700">{session.user?.name}</span>
+            </div>
+            <button
+              onClick={handleSignOut}
+              className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1 rounded hover:bg-gray-100"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Error Toast */}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-400 hover:text-red-600"
+            >
+              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="flex-1 flex">
+        {/* Map Panel - 80% width */}
+        <div className="flex-1 w-4/5">
+          <MapManager />
+        </div>
+        
+        {/* Right Panel - 20% width */}
+        <div className="w-1/5 min-w-80">
+          {selectedAOI ? <AlertViewer /> : <AOIList />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// app/middleware.ts
+import { withAuth } from 'next-auth/middleware'
+
+export default withAuth(
+  function middleware(req) {
+    // Add any additional middleware logic here
+  },
+  {
+    callbacks: {
+      authorized: ({ token }) => !!token
+    },
+  }
+)
+
+export const config = {
+  matcher: [
+    '/',
+    '/dashboard/:path*',
+    '/api/v1/:path*'
+  ]
+}
+
+// .env.local template
+/*
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-nextauth-secret-here
+
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# API Base URL (for production)
+# NEXT_PUBLIC_API_URL=https://your-backend-api.com
+*/
+
+// public/leaflet/marker-icon.png (you'll need to add these Leaflet marker images)
+// public/leaflet/marker-icon-2x.png
+// public/leaflet/marker-shadow.png
+
+// README.md
+# GeoGuardian Frontend
+
+A Next.js 14 application for environmental monitoring with satellite data.
+
+## Features
+
+- **Authentication**: Google OAuth integration with NextAuth.js
+- **Interactive Mapping**: Leaflet-based map with polygon drawing capabilities
+- **Real-time Monitoring**: Up to 5 Areas of Interest (AOI) monitoring
+- **Alert System**: Visual alerts with confidence scores and crowd verification
+- **Responsive Design**: Tailwind CSS with modern UI components
+
+## Quick Start
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Set up environment variables:**
+   Copy `.env.example` to `.env.local` and fill in your values:
+   ```
+   NEXTAUTH_URL=http://localhost:3000
+   NEXTAUTH_SECRET=your-secret-here
+   GOOGLE_CLIENT_ID=your-google-client-id
+   GOOGLE_CLIENT_SECRET=your-google-client-secret
+   ```
+
+3. **Add Leaflet marker icons:**
+   Download and place these files in `public/leaflet/`:
+   - `marker-icon.png`
+   - `marker-icon-2x.png` 
+   - `marker-shadow.png`
+
+4. **Run development server:**
+   ```bash
+   npm run dev
+   ```
+
+## Architecture
+
+- **Framework**: Next.js 14 with App Router
+- **State Management**: Zustand for client-side state
+- **Styling**: Tailwind CSS
+- **Maps**: React Leaflet with drawing capabilities
+- **Data Fetching**: React Query for server state
+- **Authentication**: NextAuth.js with Google provider
+
+## API Integration
+
+The frontend expects these backend endpoints:
+
+- `GET /api/v1/aoi` - Get user's AOIs
+- `POST /api/v1/aoi` - Create new AOI
+- `DELETE /api/v1/aoi/{id}` - Delete AOI
+- `GET /api/v1/aoi/{id}/alerts` - Get AOI alerts
+- `POST /api/v1/alerts/{id}/verify` - Verify alert
+
+## Components
+
+- **LoginPage**: Google OAuth login
+- **MapManager**: Interactive Leaflet map with drawing
+- **AOIList**: Display monitoring areas
+- **AlertViewer**: Show alerts with verification options
+
+## Deployment
+
+1. Build the application:
+   ```bash
+   npm run build
+   ```
+
+2. Deploy to your preferred platform (Vercel, Netlify, etc.)
+
+3. Set up environment variables in your deployment platform
+
+## License
+
+MIT License
