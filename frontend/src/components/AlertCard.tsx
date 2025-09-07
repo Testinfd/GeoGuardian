@@ -8,11 +8,35 @@ interface Alert {
   id: string;
   aoi_id: string;
   gif_url?: string;
-  type: 'trash' | 'algal_bloom' | 'construction';
+  type: 'trash' | 'algal_bloom' | 'construction' | 'vegetation_loss' | 'vegetation_gain' | 
+        'deforestation' | 'coastal_erosion' | 'coastal_accretion' | 'water_quality_change' | 
+        'potential_pollution' | 'urban_expansion' | 'other';
   confidence: number;
   confirmed: boolean;
   processing: boolean;
   created_at: string;
+  
+  // Enhanced fields
+  overall_confidence?: number;
+  priority_level?: 'high' | 'medium' | 'low' | 'info';
+  algorithm_results?: Array<{
+    algorithm_name: string;
+    change_detected: boolean;
+    confidence: number;
+    change_type?: string;
+    severity?: string;
+  }>;
+  spectral_indices?: {
+    ndvi?: number;
+    evi?: number;
+    ndwi?: number;
+    mndwi?: number;
+    bsi?: number;
+    algae_index?: number;
+    turbidity_index?: number;
+  };
+  algorithms_used?: string[];
+  analysis_type?: string;
 }
 
 interface AlertCardProps {
@@ -23,15 +47,39 @@ interface AlertCardProps {
 }
 
 const alertTypeLabels = {
+  // Original MVP types
   trash: '🗑️ Trash/Pollution Detected',
   algal_bloom: '🌊 Algal Bloom Detected',
-  construction: '🏗️ Construction Activity Detected'
+  construction: '🏗️ Construction Activity Detected',
+  
+  // Enhanced environmental types
+  vegetation_loss: '🌿 Vegetation Loss Detected',
+  vegetation_gain: '🌱 Vegetation Growth Detected',
+  deforestation: '🌳 Deforestation Event',
+  coastal_erosion: '🏖️ Coastal Erosion Detected',
+  coastal_accretion: '🏝️ Coastal Accretion Detected',
+  water_quality_change: '💧 Water Quality Change',
+  potential_pollution: '☢️ Potential Pollution',
+  urban_expansion: '🏙️ Urban Expansion Detected',
+  other: '🔍 Environmental Change Detected'
 };
 
 const alertTypeDescriptions = {
-  trash: 'Potential waste dumping or pollution has been detected in this area.',
-  algal_bloom: 'Unusual algal growth patterns have been identified, possibly indicating water quality issues.',
-  construction: 'New construction or land clearing activity has been detected.'
+  // Original MVP descriptions
+  trash: 'Potential waste dumping or pollution has been detected using spectral analysis.',
+  algal_bloom: 'Unusual algal growth patterns identified using advanced water quality indices.',
+  construction: 'New construction activity detected using Bare Soil Index and CUSUM algorithms.',
+  
+  // Enhanced environmental descriptions
+  vegetation_loss: 'Significant vegetation decline detected using EWMA statistical monitoring.',
+  vegetation_gain: 'Positive vegetation growth patterns identified through spectral analysis.',
+  deforestation: 'Rapid forest loss detected using CUSUM change detection algorithms.',
+  coastal_erosion: 'Coastal vegetation edge retreat detected using VedgeSat analysis.',
+  coastal_accretion: 'Coastal expansion detected through advanced edge detection methods.',
+  water_quality_change: 'Water quality parameters show significant changes from baseline.',
+  potential_pollution: 'Spectral signatures indicate possible contamination or pollution.',
+  urban_expansion: 'Urban development patterns detected using multi-spectral analysis.',
+  other: 'Environmental change detected using research-grade algorithms.'
 };
 
 export default function AlertCard({ 
@@ -131,24 +179,124 @@ export default function AlertCard({
           {alertTypeDescriptions[alert.type]}
         </p>
 
-        {/* Confidence */}
+        {/* Enhanced Confidence & Algorithm Breakdown */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-gray-700">Detection Confidence</span>
+            <span className="text-sm font-medium text-gray-700">
+              Overall Detection Confidence
+              {alert.algorithms_used && alert.algorithms_used.length > 1 && (
+                <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                  {alert.algorithms_used.length} algorithms
+                </span>
+              )}
+            </span>
             <span className="text-sm text-gray-900 font-semibold">
-              {(alert.confidence * 100).toFixed(1)}%
+              {((alert.overall_confidence || alert.confidence) * 100).toFixed(1)}%
             </span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-3">
             <div 
               className={`h-3 rounded-full transition-all duration-500 ${
-                alert.confidence > 0.7 ? 'bg-red-500' : 
-                alert.confidence > 0.4 ? 'bg-yellow-500' : 'bg-green-500'
+                (alert.overall_confidence || alert.confidence) > 0.8 ? 'bg-red-500' : 
+                (alert.overall_confidence || alert.confidence) > 0.6 ? 'bg-yellow-500' : 'bg-green-500'
               }`}
-              style={{ width: `${alert.confidence * 100}%` }}
+              style={{ width: `${((alert.overall_confidence || alert.confidence) * 100)}%` }}
             ></div>
           </div>
+          
+          {/* Priority Level */}
+          {alert.priority_level && (
+            <div className="mt-2">
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                alert.priority_level === 'high' ? 'bg-red-100 text-red-800' :
+                alert.priority_level === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                alert.priority_level === 'low' ? 'bg-blue-100 text-blue-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {alert.priority_level.toUpperCase()} PRIORITY
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* Algorithm Breakdown */}
+        {alert.algorithm_results && alert.algorithm_results.length > 0 && (
+          <div className="mb-6">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">
+              🧪 Algorithm Analysis Breakdown
+            </h4>
+            <div className="space-y-2">
+              {alert.algorithm_results.map((result, index) => (
+                <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">
+                      {result.algorithm_name.toUpperCase()}
+                      {result.change_type && (
+                        <span className="ml-2 text-xs text-gray-600">({result.change_type})</span>
+                      )}
+                    </span>
+                    {result.severity && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Severity: <span className="capitalize">{result.severity}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-sm font-semibold ${
+                      result.change_detected ? 'text-red-600' : 'text-green-600'
+                    }`}>
+                      {result.change_detected ? 'DETECTED' : 'STABLE'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {(result.confidence * 100).toFixed(1)}% confidence
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Spectral Indices */}
+        {alert.spectral_indices && Object.keys(alert.spectral_indices).length > 0 && (
+          <div className="mb-6">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">
+              🔍 Spectral Analysis (13 Sentinel-2 Bands)
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              {Object.entries(alert.spectral_indices).map(([index, value]) => {
+                if (value === null || value === undefined) return null;
+                return (
+                  <div key={index} className="bg-blue-50 p-3 rounded-lg">
+                    <div className="text-xs font-medium text-blue-800 uppercase">
+                      {index.replace('_', ' ')}
+                    </div>
+                    <div className="text-sm font-semibold text-blue-900">
+                      {typeof value === 'number' ? value.toFixed(3) : value}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-2 text-xs text-gray-500">
+              Enhanced from 4 to 13 spectral bands • Research-grade accuracy
+            </div>
+          </div>
+        )}
+
+        {/* Analysis Method */}
+        {alert.analysis_type && alert.analysis_type !== 'basic' && (
+          <div className="mb-6">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="text-sm text-green-800">
+                ✨ <strong>Enhanced Analysis:</strong> This alert was generated using advanced {alert.analysis_type} analysis
+                {alert.algorithms_used && alert.algorithms_used.length > 0 && (
+                  <span> with {alert.algorithms_used.join(', ')} algorithms</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Before/After Image */}
         {alert.gif_url && (

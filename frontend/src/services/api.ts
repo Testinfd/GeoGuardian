@@ -92,4 +92,64 @@ export const alertsAPI = {
   },
 }
 
+// Enhanced Analysis API (v2)
+export const analysisAPI = {
+  // Get system status and capabilities
+  getStatus: async () => {
+    const response = await api.get('/api/v2/analysis/status')
+    return response.data
+  },
+  
+  // Comprehensive analysis
+  runComprehensiveAnalysis: async (data: {
+    aoi_id: string;
+    analysis_type?: string;
+    algorithms?: string[];
+    date_range_days?: number;
+    use_baseline?: boolean;
+  }) => {
+    const response = await api.post('/api/v2/analysis/comprehensive', data)
+    return response.data
+  },
+  
+  // Specific analysis types
+  runVegetationAnalysis: async (aoi_id: string) => {
+    const response = await api.post('/api/v2/analysis/comprehensive', {
+      aoi_id,
+      analysis_type: 'vegetation'
+    })
+    return response.data
+  },
+  
+  runWaterQualityAnalysis: async (aoi_id: string) => {
+    const response = await api.post('/api/v2/analysis/comprehensive', {
+      aoi_id,
+      analysis_type: 'water'
+    })
+    return response.data
+  },
+  
+  runCoastalAnalysis: async (aoi_id: string) => {
+    const response = await api.post('/api/v2/analysis/comprehensive', {
+      aoi_id,
+      analysis_type: 'coastal'
+    })
+    return response.data
+  },
+  
+  runConstructionAnalysis: async (aoi_id: string) => {
+    const response = await api.post('/api/v2/analysis/comprehensive', {
+      aoi_id,
+      analysis_type: 'construction'
+    })
+    return response.data
+  },
+  
+  // Install VedgeSat integration
+  installVedgeSat: async () => {
+    const response = await api.post('/api/v2/analysis/install-vedgesat')
+    return response.data
+  }
+}
+
 export default api

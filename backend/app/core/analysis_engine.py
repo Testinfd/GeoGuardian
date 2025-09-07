@@ -721,4 +721,16 @@ class AdvancedAnalysisEngine:
         
         # Color coding for different change types
         colors = {
-            'vegetation'vegetation
+            'vegetation': (0, 255, 0),  # Green for vegetation changes
+            'construction': (255, 0, 0),  # Red for construction
+            'water': (0, 0, 255),  # Blue for water changes
+            'unknown': (255, 255, 0)  # Yellow for unknown changes
+        }
+
+        # Get color for this detection type
+        color = colors.get(detection_type, colors['unknown'])
+
+        # Apply overlay where changes are detected
+        overlay[change_mask > 0] = color
+
+        return overlay
