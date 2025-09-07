@@ -1,75 +1,70 @@
+# GeoGuardian - Comprehensive .gitignore
+
 # Dependencies
 node_modules/
-*/node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Next.js
-/.next/
-/out/
-.next/
-.vercel/
-
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
+*.pyc
+*.pyo
+*.pyd
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-venv/
 env/
-ENV/
-env.bak/
-venv.bak/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
 
-# Environment variables
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment Variables & Secrets
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 *.env
+.env.*
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# API Keys and Secrets
+config/secrets.json
+secrets/
+keys/
+*.pem
+*.key
+*.crt
 
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Database
+*.sqlite
+*.sqlite3
+*.db
+database.db
 
 # Logs
-logs
+logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
 # Runtime data
-pids
+pids/
 *.pid
 *.seed
 *.pid.lock
@@ -81,8 +76,27 @@ coverage/
 # nyc test coverage
 .nyc_output
 
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components/
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+build/Release
+
 # Dependency directories
+node_modules/
 jspm_packages/
+
+# Snowpack dependency directory
+web_modules/
+
+# TypeScript cache
+*.tsbuildinfo
 
 # Optional npm cache directory
 .npm
@@ -105,30 +119,186 @@ jspm_packages/
 # Yarn Integrity file
 .yarn-integrity
 
-# parcel-bundler cache (https://parceljs.org/)
+# dotenv environment variables file
+.env
+.env.test
+
+# parcel-bundler cache
 .cache
 .parcel-cache
 
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
+# Next.js build output
+.next/
+out/
+
+# Nuxt.js build / generate output
+.nuxt
+dist/
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
 
 # Temporary folders
 tmp/
 temp/
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
+# Editor directories and files
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Python specific
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
 
 # Docker
-.dockerignore
+.docker/
+docker-compose.override.yml
 
-# Project specific
-uploads/
+# Assets and Generated Files
+assets/
 *.gif
 *.png
 *.jpg
 *.jpeg
-*.tiff
+generated/
+uploads/
+
+# Satellite Data Cache
 satellite_cache/
+imagery_cache/
+sentinel_data/
+
+# ML Models and Training Data
+models/
+training_data/
+checkpoints/
+*.pkl
+*.joblib
+*.h5
+*.hdf5
+
+# Misc
+.sass-cache/
+*.css.map
+*.js.map
+.nyc_output/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# External repositories (will be cloned separately)
+backend/app/external/COASTGUARD/
+!backend/app/external/COASTGUARD/.gitkeep
+
+# Keep important empty directories
+!.gitkeep

@@ -59,39 +59,44 @@ graph TD
 
 ## 🛠️ Getting Started
 
-### Prerequisites
-*   Git, Python 3.10+, Node.js 18+
-*   Accounts with: Google (for OAuth), Supabase, Sentinel Hub, and SendGrid.
+### ⚡ Quick Start (5 minutes)
 
-### Quick Start
-
-1. **Clone the repository**:
+1. **Clone and setup**:
    ```bash
-   git clone https://github.com/your-org/geoguardian.git
+   git clone https://github.com/Testinfd/GeoGuardian.git
    cd geoguardian
    ```
 
-2. **Start development servers**:
+2. **Choose your role**:
+   - **Frontend Developer**: See [DEPLOYMENT_QUICKSTART.md](./DEPLOYMENT_QUICKSTART.md)
+   - **Backend Developer**: See [docs/DEPLOYMENT_INSTRUCTIONS.md](./docs/DEPLOYMENT_INSTRUCTIONS.md)
+   - **Full Stack**: See [docs/README_SETUP.md](./docs/README_SETUP.md)
+
+3. **Start development**:
    ```bash
-   # On Windows
-   start-dev.bat
-   
-   # On Unix/Linux/macOS
-   ./start-dev.sh
-   
-   # Or using npm
-   npm install
-   npm run setup
-   npm run dev
+   # Frontend only (recommended for UI work)
+   cd frontend && npm install && npm run dev
+
+   # Full stack development
+   # Follow the setup guides above
    ```
 
-3. **Configure environment variables**:
-   - Update `backend/.env` with your API keys
-   - Update `frontend/.env.local` with Supabase credentials
+### 📋 Prerequisites
+*   **Node.js 18+** (for frontend development)
+*   **Python 3.10+** (for backend development)
+*   **Git**
+*   Accounts: Google (OAuth), Supabase, Sentinel Hub
 
-### Detailed Setup Instructions
-For complete setup instructions including Supabase configuration:
-*   **[Supabase Setup Guide](./SUPABASE_SETUP.md)**
+### 📁 Project Structure
+```
+geoguardian/
+├── frontend/           # Next.js + TypeScript frontend
+├── backend/            # Python FastAPI backend
+├── docs/              # All documentation and guides
+├── app/               # Legacy app directory
+├── .gitignore         # Git ignore rules
+└── *.md              # Quick reference docs
+```
 
 ## 🧪 Project Status & Roadmap
 
