@@ -1,16 +1,16 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
-import { aoiAPI } from '@/services/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { aoiAPI, alertsAPI } from '@/services/api'
 import AOICard from '@/components/AOICard'
+import { useAOIStore } from '@/store/aoiStore'
 
 interface AOI {
   id: string
   name: string
-  geometry: any
-  status: 'monitoring' | 'alert' | 'inactive'
-  lastAlert?: Date
+  geojson: any
+  created_at: string
 }
 
 interface AOIListProps {
@@ -18,7 +18,10 @@ interface AOIListProps {
 }
 
 export default function AOIList({ onAOISelect }: AOIListProps) {
-  const { data: aois = [], isLoading, error } = useQuery({
+  const queryClient = useQueryClient()
+  const { removeAOI } = useAOIStore()
+
+  const { data: aois = [], isLoading, error, refetch } = useQuery({
     queryKey: ['aois'],
     queryFn: async () => {
       const response = await aoiAPI.getAll()
@@ -26,6 +29,19 @@ export default function AOIList({ onAOISelect }: AOIListProps) {
     },
     refetchInterval: 30000, // Refetch every 30 seconds
   })
+
+  const handleAOIDelete = async (aoiId: string) => {
+    try {
+      // The AOI is already removed from the store by AOICard
+      // Just ensure our local state is consistent
+      await refetch()
+      queryClient.invalidateQueries({ queryKey: ['aois'] })
+    } catch (error) {
+      console.error('Failed to refresh AOI list after deletion:', error)
+      // Try to refetch to restore data if there was an issue
+      await refetch()
+    }
+  }
 
   return (
     <div className="h-full bg-white border-l border-gray-200 flex flex-col">
@@ -80,7 +96,8 @@ export default function AOIList({ onAOISelect }: AOIListProps) {
               >
                 <AOICard
                   aoi={aoi}
-                  onClick={() => onAOISelect(aoi)}
+                  onView={() => onAOISelect(aoi)}
+                  onDelete={handleAOIDelete}
                 />
               </motion.div>
             ))}

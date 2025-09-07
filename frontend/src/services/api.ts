@@ -94,60 +94,152 @@ export const alertsAPI = {
 
 // Enhanced Analysis API (v2)
 export const analysisAPI = {
-  // Get system status and capabilities
-  getStatus: async () => {
-    const response = await api.get('/api/v2/analysis/status')
+  // Get analysis capabilities and system information
+  getCapabilities: async () => {
+    const response = await api.get('/api/v2/capabilities')
     return response.data
   },
   
-  // Comprehensive analysis
-  runComprehensiveAnalysis: async (data: {
+  // Check data availability for an AOI
+  checkDataAvailability: async (aoi_id: string, geojson: any, days_back: number = 30) => {
+    const response = await api.get(`/api/v2/data-availability/${aoi_id}`, {
+      params: { geojson: JSON.stringify(geojson), days_back }
+    })
+    return response.data
+  },
+  
+  // Comprehensive analysis with full configuration
+  runComprehensiveAnalysis: async (request: {
     aoi_id: string;
+    geojson: any;
     analysis_type?: string;
-    algorithms?: string[];
     date_range_days?: number;
-    use_baseline?: boolean;
+    max_cloud_coverage?: number;
+    include_spectral_analysis?: boolean;
+    include_visualizations?: boolean;
+    algorithms?: string[];
+    priority_threshold?: number;
   }) => {
-    const response = await api.post('/api/v2/analysis/comprehensive', data)
+    const response = await api.post('/api/v2/analyze/comprehensive', request)
     return response.data
   },
   
-  // Specific analysis types
-  runVegetationAnalysis: async (aoi_id: string) => {
-    const response = await api.post('/api/v2/analysis/comprehensive', {
+  // Specific analysis types with enhanced parameters
+  runVegetationAnalysis: async (aoi_id: string, geojson: any, options?: {
+    date_range_days?: number;
+    algorithms?: string[];
+  }) => {
+    const response = await api.post('/api/v2/analyze/comprehensive', {
       aoi_id,
-      analysis_type: 'vegetation'
+      geojson,
+      analysis_type: 'vegetation',
+      include_spectral_analysis: true,
+      include_visualizations: true,
+      ...options
     })
     return response.data
   },
   
-  runWaterQualityAnalysis: async (aoi_id: string) => {
-    const response = await api.post('/api/v2/analysis/comprehensive', {
+  runWaterQualityAnalysis: async (aoi_id: string, geojson: any, options?: {
+    date_range_days?: number;
+    max_cloud_coverage?: number;
+  }) => {
+    const response = await api.post('/api/v2/analyze/comprehensive', {
       aoi_id,
-      analysis_type: 'water'
+      geojson,
+      analysis_type: 'water',
+      include_spectral_analysis: true,
+      max_cloud_coverage: options?.max_cloud_coverage || 0.2,
+      date_range_days: options?.date_range_days || 14,
+      algorithms: ['ewma_water', 'spectral_analysis']
     })
     return response.data
   },
   
-  runCoastalAnalysis: async (aoi_id: string) => {
-    const response = await api.post('/api/v2/analysis/comprehensive', {
+  runCoastalAnalysis: async (aoi_id: string, geojson: any, options?: {
+    date_range_days?: number;
+    include_vedgesat?: boolean;
+  }) => {
+    const response = await api.post('/api/v2/analyze/comprehensive', {
       aoi_id,
-      analysis_type: 'coastal'
+      geojson,
+      analysis_type: 'coastal',
+      include_visualizations: true,
+      date_range_days: options?.date_range_days || 30,
+      algorithms: options?.include_vedgesat !== false ? ['vedgesat_coastal', 'edge_detection'] : ['edge_detection']
     })
     return response.data
   },
   
-  runConstructionAnalysis: async (aoi_id: string) => {
-    const response = await api.post('/api/v2/analysis/comprehensive', {
+  runConstructionAnalysis: async (aoi_id: string, geojson: any, options?: {
+    date_range_days?: number;
+    sensitivity?: 'low' | 'medium' | 'high';
+  }) => {
+    const sensitivity_thresholds = {
+      low: 0.8,
+      medium: 0.7,
+      high: 0.5
+    }
+    
+    const response = await api.post('/api/v2/analyze/comprehensive', {
       aoi_id,
-      analysis_type: 'construction'
+      geojson,
+      analysis_type: 'construction',
+      include_spectral_analysis: true,
+      include_visualizations: true,
+      date_range_days: options?.date_range_days || 20,
+      priority_threshold: sensitivity_thresholds[options?.sensitivity || 'medium'],
+      algorithms: ['cusum_construction', 'spectral_analysis']
     })
     return response.data
   },
   
-  // Install VedgeSat integration
-  installVedgeSat: async () => {
-    const response = await api.post('/api/v2/analysis/install-vedgesat')
+  runDeforestationAnalysis: async (aoi_id: string, geojson: any, options?: {
+    date_range_days?: number;
+    algorithms?: string[];
+  }) => {
+    const response = await api.post('/api/v2/analyze/comprehensive', {
+      aoi_id,
+      geojson,
+      analysis_type: 'comprehensive',
+      include_spectral_analysis: true,
+      include_visualizations: true,
+      date_range_days: options?.date_range_days || 60,
+      algorithms: options?.algorithms || ['cusum_deforestation', 'ewma_vegetation', 'spectral_analysis']
+    })
+    return response.data
+  },
+  
+  // Real-time analysis status checking
+  getAnalysisStatus: async (analysis_id: string) => {
+    const response = await api.get(`/api/v2/analysis/status/${analysis_id}`)
+    return response.data
+  },
+  
+  // Batch analysis for multiple AOIs
+  runBatchAnalysis: async (aois: Array<{aoi_id: string, geojson: any, analysis_type?: string}>) => {
+    const response = await api.post('/api/v2/analyze/batch', {
+      analyses: aois
+    })
+    return response.data
+  },
+  
+  // Historical analysis results
+  getAnalysisHistory: async (aoi_id: string, limit: number = 10) => {
+    const response = await api.get(`/api/v2/analysis/history/${aoi_id}`, {
+      params: { limit }
+    })
+    return response.data
+  },
+  
+  // Analysis comparison between time periods
+  compareAnalysis: async (aoi_id: string, geojson: any, period1: string, period2: string) => {
+    const response = await api.post('/api/v2/analyze/compare', {
+      aoi_id,
+      geojson,
+      period1,
+      period2
+    })
     return response.data
   }
 }

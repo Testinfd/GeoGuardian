@@ -27,6 +27,7 @@ interface AOICardProps {
   aoi: AOI;
   alert?: Alert;
   onView: () => void;
+  onDelete?: (aoiId: string) => void;
 }
 
 const alertTypeLabels = {
@@ -41,7 +42,7 @@ const alertTypeColors = {
   construction: 'bg-red-100 text-red-800'
 };
 
-export default function AOICard({ aoi, alert, onView }: AOICardProps) {
+export default function AOICard({ aoi, alert, onView, onDelete }: AOICardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCheckingAlert, setIsCheckingAlert] = useState(false);
   const { removeAOI, addAlert } = useAOIStore();
@@ -55,9 +56,24 @@ export default function AOICard({ aoi, alert, onView }: AOICardProps) {
     try {
       await aoiAPI.deleteAOI(aoi.id);
       removeAOI(aoi.id);
-    } catch (error) {
+      // Notify parent component of successful deletion
+      onDelete?.(aoi.id);
+    } catch (error: any) {
       console.error('Failed to delete AOI:', error);
-      alert('Failed to delete area of interest. Please try again.');
+      const errorMessage = error?.response?.data?.detail ||
+                          error?.message ||
+                          'Failed to delete area of interest. Please try again.';
+      // Use a more modern approach - we could integrate with a toast notification system
+      // For now, using a styled alert
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+      errorDiv.textContent = errorMessage;
+      document.body.appendChild(errorDiv);
+      setTimeout(() => {
+        if (errorDiv.parentNode) {
+          errorDiv.parentNode.removeChild(errorDiv);
+        }
+      }, 5000);
     } finally {
       setIsDeleting(false);
     }
