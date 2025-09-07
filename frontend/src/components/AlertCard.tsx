@@ -16,7 +16,7 @@ interface Alert {
   processing: boolean;
   created_at: string;
   
-  // Enhanced fields
+  // Enhanced fields for research-grade analysis
   overall_confidence?: number;
   priority_level?: 'high' | 'medium' | 'low' | 'info';
   algorithm_results?: Array<{
@@ -25,6 +25,7 @@ interface Alert {
     confidence: number;
     change_type?: string;
     severity?: string;
+    processing_time?: number;
   }>;
   spectral_indices?: {
     ndvi?: number;
@@ -34,9 +35,27 @@ interface Alert {
     bsi?: number;
     algae_index?: number;
     turbidity_index?: number;
+    savi?: number;
+    arvi?: number;
+    gndvi?: number;
+    rdvi?: number;
+    psri?: number;
+    chl_red_edge?: number;
   };
   algorithms_used?: string[];
   analysis_type?: string;
+  processing_metadata?: {
+    processing_time_seconds?: number;
+    data_quality_score?: number;
+    satellite_metadata?: any;
+  };
+  detections?: Array<{
+    type: string;
+    algorithm: string;
+    confidence: number;
+    severity?: string;
+    change_detected: boolean;
+  }>;
 }
 
 interface AlertCardProps {
@@ -90,6 +109,7 @@ export default function AlertCard({
 }: AlertCardProps) {
   const [isVerifying, setIsVerifying] = useState(false);
   const [userVote, setUserVote] = useState<'agree' | 'dismiss' | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const handleVerification = async (vote: 'agree' | 'dismiss') => {
     if (isVerifying) return;
@@ -105,6 +125,31 @@ export default function AlertCard({
       setIsVerifying(false);
     }
   };
+
+  const getPriorityColor = (priority?: string) => {
+    const colors = {
+      high: 'bg-red-100 text-red-800 border-red-200',
+      medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      low: 'bg-blue-100 text-blue-800 border-blue-200',
+      info: 'bg-gray-100 text-gray-800 border-gray-200'
+    };
+    return colors[priority as keyof typeof colors] || colors.info;
+  };
+
+  const getSeverityIcon = (severity?: string) => {
+    const icons = {
+      high: '🚨',
+      moderate: '⚠️',
+      low: '📊',
+      negligible: '📈'
+    };
+    return icons[severity as keyof typeof icons] || '📊';
+  };
+
+  // Enhanced confidence calculation
+  const displayConfidence = alert.overall_confidence || alert.confidence;
+  const hasEnhancedData = alert.algorithm_results || alert.spectral_indices || alert.algorithms_used;
+  const algorithmsCount = alert.algorithms_used?.length || alert.algorithm_results?.length || 1;
 
   const shareAlert = async () => {
     const shareUrl = `${window.location.origin}/alerts/${alert.id}`;

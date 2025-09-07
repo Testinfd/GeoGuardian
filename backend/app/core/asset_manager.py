@@ -1,57 +1,562 @@
 """
 Asset Manager for GeoGuardian
-Handles generation and storage of change detection visualizations
-
-This module provides comprehensive asset management including:
-- Real change detection GIF generation
-- Before/after comparison visualizations
-- Cloud storage integration
-- Asset URL management and security
-- Performance optimization for large datasets
+Handles generation and management of visualization assets including GIFs, images, and change detection overlays
 """
 
 import numpy as np
 import cv2
-from PIL import Image, ImageDraw, ImageFont
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from matplotlib.colors import ListedColormap
 import io
-import boto3
-from botocore.exceptions import ClientError
+import base64
 import os
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional, Union
-import logging
-import hashlib
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import tempfile
-from .config import settings
+import uuid
+from PIL import Image, ImageDraw, ImageFont
+from typing import Dict, List, Optional, Tuple, Any
+import logging
+from datetime import datetime
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 
 class AssetManager:
     """
-    Comprehensive asset management for satellite imagery visualizations
+    Manages creation and storage of visualization assets for change detection results
     
-    Handles creation, storage, and management of all visual assets including
-    change detection GIFs, overlay images, and comparison visualizations.
+    Capabilities:
+    - Generate before/after comparison GIFs
+    - Create change detection overlay images
+    - Generate statistical visualizations
+    - Handle asset storage and URL generation
     """
     
-    def __init__(self):
-        """Initialize asset manager with cloud storage configuration"""
+    def __init__(self, storage_path: Optional[str] = None):
+        """
+        Initialize asset manager
         
-        # Initialize AWS S3 client if credentials available
+        Args:
+            storage_path: Path for storing generated assets (defaults to temp directory)
+        """
+        self.storage_path = storage_path or tempfile.gettempdir()
+        self.assets_url_base = "/assets"  # Base URL for serving assets
+        
+        # Ensure storage directory exists
+        os.makedirs(self.storage_path, exist_ok=True)
+        
+        logger.info(f"AssetManager initialized with storage path: {self.storage_path}")
+    
+    async def generate_change_detection_gif(
+        self,
+        aoi_id: str,
+        before_image: np.ndarray,
+        after_image: np.ndarray,
+        change_mask: np.ndarray,
+        detection_results: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Generate comprehensive change detection GIF with overlays and metadata
+        
+        Args:
+            aoi_id: Area of Interest ID
+            before_image: Historical satellite image
+            after_image: Recent satellite image  
+            change_mask: Binary mask indicating detected changes
+            detection_results: Analysis results for overlay information
+            metadata: Additional metadata for the visualization
+            
+        Returns:
+            URL path to the generated GIF
+        """
         try:
-            self.s3_client = boto3.client(
-                's3',
-                aws_access_key_id=getattr(settings, 'AWS_ACCESS_KEY_ID', None),
-                aws_secret_access_key=getattr(settings, 'AWS_SECRET_ACCESS_KEY', None),
-                region_name=getattr(settings, 'AWS_REGION', 'us-east-1')
+            # Generate unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"change_detection_{aoi_id}_{timestamp}.gif"
+            filepath = os.path.join(self.storage_path, filename)
+            
+            # Normalize images for display
+            before_rgb = self._normalize_image_for_display(before_image)
+            after_rgb = self._normalize_image_for_display(after_image)
+            
+            # Resize images if they're too large (for performance)
+            max_size = 512
+            if before_rgb.shape[0] > max_size or before_rgb.shape[1] > max_size:
+                before_rgb = self._resize_image(before_rgb, max_size)
+                after_rgb = self._resize_image(after_rgb, max_size)
+                change_mask = cv2.resize(
+                    change_mask.astype(np.uint8), 
+                    (before_rgb.shape[1], before_rgb.shape[0]), 
+                    interpolation=cv2.INTER_NEAREST
+                ).astype(bool)
+            
+            # Create frames for the GIF
+            frames = []
+            
+            # Frame 1: Before image with title
+            before_frame = self._add_title_to_frame(
+                before_rgb.copy(), 
+                "BEFORE",
+                metadata.get('recent_image_quality', 0.8)
             )
-            self.bucket_name = getattr(settings, 'ASSETS_BUCKET', 'geoguardian-assets')
-            self.cloud_storage_enabled = True
+            frames.append(Image.fromarray(before_frame))
+            
+            # Frame 2: After image with title
+            after_frame = self._add_title_to_frame(
+                after_rgb.copy(), 
+                "AFTER",
+                metadata.get('baseline_image_quality', 0.8)
+            )
+            frames.append(Image.fromarray(after_frame))
+            
+            # Frame 3: Change detection overlay
+            change_overlay = self._create_change_overlay(
+                after_rgb, change_mask, detection_results
+            )
+            change_frame = self._add_title_to_frame(
+                change_overlay, 
+                "CHANGES DETECTED",
+                detection_results.get('overall_confidence', 0.0)
+            )
+            frames.append(Image.fromarray(change_frame))
+            
+            # Frame 4: Side-by-side comparison
+            comparison_frame = self._create_side_by_side_comparison(
+                before_rgb, after_rgb, detection_results, metadata
+            )
+            frames.append(Image.fromarray(comparison_frame))
+            
+            # Generate GIF
+            if frames:
+                frames[0].save(
+                    filepath,
+                    save_all=True,
+                    append_images=frames[1:],
+                    duration=1500,  # 1.5 seconds per frame
+                    loop=0,
+                    optimize=True
+                )
+                
+                logger.info(f"Generated change detection GIF: {filename}")
+                return f"{self.assets_url_base}/{filename}"
+            else:
+                raise ValueError("No frames generated for GIF")
+                
         except Exception as e:
-            logger.warning(f"Cloud storage not configured: {e}\")\n            self.s3_client = None\n            self.cloud_storage_enabled = False\n        \n        # Local fallback directory\n        self.local_assets_dir = os.path.join(os.getcwd(), 'assets')\n        os.makedirs(self.local_assets_dir, exist_ok=True)\n        \n        logger.info(f\"AssetManager initialized. Cloud storage: {self.cloud_storage_enabled}\")\n    \n    async def generate_change_detection_gif(\n        self, \n        aoi_id: str,\n        before_image: np.ndarray,\n        after_image: np.ndarray,\n        change_mask: np.ndarray,\n        detection_results: Dict,\n        metadata: Optional[Dict] = None\n    ) -> str:\n        \"\"\"\n        Generate comprehensive change detection GIF with overlays\n        \n        Args:\n            aoi_id: Area of Interest identifier\n            before_image: Historical satellite image\n            after_image: Recent satellite image\n            change_mask: Binary mask of detected changes\n            detection_results: Analysis results with confidence scores\n            metadata: Additional metadata for labeling\n            \n        Returns:\n            URL of the generated GIF asset\n        \"\"\"\n        \n        try:\n            logger.info(f\"Generating change detection GIF for AOI {aoi_id}\")\n            \n            # Create GIF using thread pool for CPU-intensive operations\n            with ThreadPoolExecutor(max_workers=2) as executor:\n                loop = asyncio.get_event_loop()\n                gif_data = await loop.run_in_executor(\n                    executor,\n                    self._create_change_detection_gif,\n                    before_image, after_image, change_mask, detection_results, metadata\n                )\n            \n            # Generate unique filename\n            timestamp = datetime.now().strftime(\"%Y%m%d_%H%M%S\")\n            confidence = detection_results.get('overall_confidence', 0.0)\n            filename = f\"change_detection_{aoi_id}_{timestamp}_{confidence:.2f}.gif\"\n            \n            # Upload to cloud storage or save locally\n            asset_url = await self._save_asset(gif_data, filename, 'change-detections')\n            \n            logger.info(f\"Change detection GIF generated: {asset_url}\")\n            return asset_url\n            \n        except Exception as e:\n            logger.error(f\"Error generating change detection GIF: {str(e)}\")\n            return self._get_fallback_gif_url(aoi_id, \"generation_error\")\n    \n    def _create_change_detection_gif(\n        self,\n        before_image: np.ndarray,\n        after_image: np.ndarray,\n        change_mask: np.ndarray,\n        detection_results: Dict,\n        metadata: Optional[Dict] = None\n    ) -> bytes:\n        \"\"\"Create the actual GIF data\"\"\"\n        \n        # Normalize images for display\n        before_rgb = self._normalize_for_display(before_image)\n        after_rgb = self._normalize_for_display(after_image)\n        \n        # Create change overlay\n        change_overlay = self._create_change_overlay(after_rgb, change_mask, detection_results)\n        \n        # Create frames with titles and metadata\n        frames = []\n        \n        # Frame 1: Before image\n        frame1 = self._add_title_and_metadata(\n            before_rgb, \n            \"Before\", \n            metadata or {}, \n            detection_results\n        )\n        frames.append(Image.fromarray(frame1))\n        \n        # Frame 2: After image\n        frame2 = self._add_title_and_metadata(\n            after_rgb, \n            \"After\", \n            metadata or {}, \n            detection_results\n        )\n        frames.append(Image.fromarray(frame2))\n        \n        # Frame 3: Change detection overlay\n        frame3 = self._add_title_and_metadata(\n            change_overlay, \n            \"Changes Detected\", \n            metadata or {}, \n            detection_results\n        )\n        frames.append(Image.fromarray(frame3))\n        \n        # Create side-by-side comparison frame\n        comparison_frame = self._create_comparison_frame(before_rgb, after_rgb, detection_results)\n        frames.append(Image.fromarray(comparison_frame))\n        \n        # Save as GIF\n        gif_buffer = io.BytesIO()\n        frames[0].save(\n            gif_buffer,\n            format='GIF',\n            save_all=True,\n            append_images=frames[1:],\n            duration=2000,  # 2 seconds per frame\n            loop=0,\n            optimize=True\n        )\n        \n        return gif_buffer.getvalue()\n    \n    def _normalize_for_display(self, image: np.ndarray) -> np.ndarray:\n        \"\"\"Normalize satellite image for RGB display\"\"\"\n        \n        # Handle different input formats\n        if image.shape[2] >= 3:\n            # Use first 3 bands as RGB\n            rgb = image[:, :, :3].copy()\n        else:\n            # Convert grayscale to RGB\n            rgb = np.stack([image[:, :, 0]] * 3, axis=2)\n        \n        # Handle different value ranges\n        if rgb.max() <= 1.0:\n            # Values in [0, 1] range\n            rgb_normalized = (rgb * 255).astype(np.uint8)\n        elif rgb.max() <= 255:\n            # Values already in [0, 255] range\n            rgb_normalized = rgb.astype(np.uint8)\n        else:\n            # Values > 255, need scaling\n            rgb_min, rgb_max = rgb.min(), rgb.max()\n            if rgb_max > rgb_min:\n                rgb_normalized = ((rgb - rgb_min) / (rgb_max - rgb_min) * 255).astype(np.uint8)\n            else:\n                rgb_normalized = np.zeros_like(rgb, dtype=np.uint8)\n        \n        # Apply histogram stretching for better contrast\n        rgb_stretched = self._histogram_stretch(rgb_normalized)\n        \n        return rgb_stretched\n    \n    def _histogram_stretch(self, image: np.ndarray, percentile_low: float = 2, percentile_high: float = 98) -> np.ndarray:\n        \"\"\"Apply histogram stretching for better contrast\"\"\"\n        \n        stretched = image.copy()\n        \n        for i in range(image.shape[2]):\n            band = image[:, :, i]\n            p_low = np.percentile(band, percentile_low)\n            p_high = np.percentile(band, percentile_high)\n            \n            if p_high > p_low:\n                stretched[:, :, i] = np.clip((band - p_low) / (p_high - p_low) * 255, 0, 255)\n        \n        return stretched.astype(np.uint8)\n    \n    def _create_change_overlay(\n        self, \n        base_image: np.ndarray, \n        change_mask: np.ndarray, \n        detection_results: Dict\n    ) -> np.ndarray:\n        \"\"\"Create colored overlay for detected changes\"\"\"\n        \n        overlay = base_image.copy()\n        \n        # Determine overlay color based on detection type\n        detection_type = detection_results.get('primary_detection_type', 'unknown')\n        colors = {\n            'vegetation_loss': [255, 100, 100],  # Red\n            'vegetation_gain': [100, 255, 100],  # Green\n            'deforestation': [255, 50, 50],      # Bright red\n            'construction': [255, 165, 0],        # Orange\n            'water_quality': [100, 100, 255],     # Blue\n            'coastal_erosion': [255, 255, 100],   # Yellow\n            'algal_bloom': [0, 255, 255],         # Cyan\n            'unknown': [255, 0, 255]              # Magenta\n        }\n        \n        color = colors.get(detection_type, colors['unknown'])\n        \n        # Apply overlay with transparency\n        alpha = 0.6\n        overlay[change_mask > 0] = (\n            overlay[change_mask > 0] * (1 - alpha) + \n            np.array(color) * alpha\n        ).astype(np.uint8)\n        \n        # Add contours for better visibility\n        if np.any(change_mask > 0):\n            contours, _ = cv2.findContours(\n                change_mask.astype(np.uint8), \n                cv2.RETR_EXTERNAL, \n                cv2.CHAIN_APPROX_SIMPLE\n            )\n            cv2.drawContours(overlay, contours, -1, color, 2)\n        \n        return overlay\n    \n    def _add_title_and_metadata(\n        self, \n        image: np.ndarray, \n        title: str, \n        metadata: Dict, \n        detection_results: Dict\n    ) -> np.ndarray:\n        \"\"\"Add title and metadata information to image\"\"\"\n        \n        # Create larger canvas for title and metadata\n        canvas_height = image.shape[0] + 80  # Extra space for text\n        canvas = np.zeros((canvas_height, image.shape[1], 3), dtype=np.uint8)\n        \n        # Place image on canvas\n        canvas[60:60+image.shape[0], :] = image\n        \n        # Convert to PIL for text rendering\n        pil_image = Image.fromarray(canvas)\n        draw = ImageDraw.Draw(pil_image)\n        \n        try:\n            # Use a basic font (fallback if custom font not available)\n            title_font = ImageFont.load_default()\n            text_font = ImageFont.load_default()\n        except:\n            title_font = ImageFont.load_default()\n            text_font = ImageFont.load_default()\n        \n        # Draw title\n        title_bbox = draw.textbbox((0, 0), title, font=title_font)\n        title_width = title_bbox[2] - title_bbox[0]\n        title_x = (image.shape[1] - title_width) // 2\n        draw.text((title_x, 10), title, fill=(255, 255, 255), font=title_font)\n        \n        # Draw metadata\n        confidence = detection_results.get('overall_confidence', 0.0)\n        priority = detection_results.get('priority_level', 'unknown')\n        metadata_text = f\"Confidence: {confidence:.2f} | Priority: {priority}\"\n        \n        meta_bbox = draw.textbbox((0, 0), metadata_text, font=text_font)\n        meta_width = meta_bbox[2] - meta_bbox[0]\n        meta_x = (image.shape[1] - meta_width) // 2\n        draw.text((meta_x, 35), metadata_text, fill=(200, 200, 200), font=text_font)\n        \n        return np.array(pil_image)\n    \n    def _create_comparison_frame(\n        self, \n        before_image: np.ndarray, \n        after_image: np.ndarray, \n        detection_results: Dict\n    ) -> np.ndarray:\n        \"\"\"Create side-by-side comparison frame\"\"\"\n        \n        # Resize images to same height\n        target_height = min(before_image.shape[0], after_image.shape[0])\n        \n        before_resized = cv2.resize(before_image, \n                                   (int(before_image.shape[1] * target_height / before_image.shape[0]), target_height))\n        after_resized = cv2.resize(after_image, \n                                  (int(after_image.shape[1] * target_height / after_image.shape[0]), target_height))\n        \n        # Create side-by-side comparison\n        comparison = np.hstack([before_resized, after_resized])\n        \n        # Add dividing line\n        divider_x = before_resized.shape[1]\n        cv2.line(comparison, (divider_x, 0), (divider_x, target_height), (255, 255, 255), 3)\n        \n        # Add labels\n        cv2.putText(comparison, \"BEFORE\", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)\n        cv2.putText(comparison, \"AFTER\", (divider_x + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)\n        \n        return comparison\n    \n    async def _save_asset(self, asset_data: bytes, filename: str, folder: str) -> str:\n        \"\"\"Save asset to cloud storage or local filesystem\"\"\"\n        \n        if self.cloud_storage_enabled:\n            return await self._upload_to_s3(asset_data, filename, folder)\n        else:\n            return self._save_locally(asset_data, filename, folder)\n    \n    async def _upload_to_s3(self, asset_data: bytes, filename: str, folder: str) -> str:\n        \"\"\"Upload asset to AWS S3\"\"\"\n        \n        try:\n            key = f\"{folder}/{filename}\"\n            \n            # Upload with metadata\n            self.s3_client.put_object(\n                Bucket=self.bucket_name,\n                Key=key,\n                Body=asset_data,\n                ContentType='image/gif',\n                Metadata={\n                    'created_at': datetime.now().isoformat(),\n                    'service': 'geoguardian',\n                    'asset_type': 'change_detection'\n                }\n            )\n            \n            # Return public URL\n            url = f\"https://{self.bucket_name}.s3.amazonaws.com/{key}\"\n            logger.debug(f\"Asset uploaded to S3: {url}\")\n            return url\n            \n        except ClientError as e:\n            logger.error(f\"S3 upload failed: {e}\")\n            # Fallback to local storage\n            return self._save_locally(asset_data, filename, folder)\n    \n    def _save_locally(self, asset_data: bytes, filename: str, folder: str) -> str:\n        \"\"\"Save asset to local filesystem\"\"\"\n        \n        try:\n            folder_path = os.path.join(self.local_assets_dir, folder)\n            os.makedirs(folder_path, exist_ok=True)\n            \n            file_path = os.path.join(folder_path, filename)\n            \n            with open(file_path, 'wb') as f:\n                f.write(asset_data)\n            \n            # Return local file URL\n            url = f\"file://{file_path}\"\n            logger.debug(f\"Asset saved locally: {url}\")\n            return url\n            \n        except Exception as e:\n            logger.error(f\"Local save failed: {e}\")\n            return self._get_fallback_gif_url(filename, \"save_error\")\n    \n    def _get_fallback_gif_url(self, identifier: str, error_type: str) -> str:\n        \"\"\"Generate fallback GIF URL for errors\"\"\"\n        \n        # Create a descriptive placeholder URL\n        fallback_url = (\n            f\"https://via.placeholder.com/400x300.gif?\"\n            f\"text=Processing+Error&\"\n            f\"id={identifier}&\"\n            f\"error={error_type}\"\n        )\n        \n        logger.warning(f\"Using fallback GIF URL: {fallback_url}\")\n        return fallback_url\n    \n    async def generate_spectral_analysis_chart(\n        self, \n        aoi_id: str,\n        spectral_data: Dict,\n        detection_results: Dict\n    ) -> str:\n        \"\"\"Generate spectral analysis chart\"\"\"\n        \n        try:\n            with ThreadPoolExecutor(max_workers=1) as executor:\n                loop = asyncio.get_event_loop()\n                chart_data = await loop.run_in_executor(\n                    executor,\n                    self._create_spectral_chart,\n                    spectral_data, detection_results\n                )\n            \n            # Save chart\n            timestamp = datetime.now().strftime(\"%Y%m%d_%H%M%S\")\n            filename = f\"spectral_analysis_{aoi_id}_{timestamp}.png\"\n            \n            chart_url = await self._save_asset(chart_data, filename, 'spectral-charts')\n            \n            logger.info(f\"Spectral analysis chart generated: {chart_url}\")\n            return chart_url\n            \n        except Exception as e:\n            logger.error(f\"Error generating spectral chart: {str(e)}\")\n            return f\"https://via.placeholder.com/600x400.png?text=Spectral+Analysis+Error\"\n    \n    def _create_spectral_chart(self, spectral_data: Dict, detection_results: Dict) -> bytes:\n        \"\"\"Create spectral analysis chart\"\"\"\n        \n        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))\n        \n        # Chart 1: Spectral indices comparison\n        indices = list(spectral_data.keys())\n        values = list(spectral_data.values())\n        \n        ax1.bar(indices, values, color='skyblue', alpha=0.7)\n        ax1.set_title('Spectral Indices Analysis')\n        ax1.set_ylabel('Index Value')\n        ax1.tick_params(axis='x', rotation=45)\n        \n        # Chart 2: Detection confidence by algorithm\n        algorithms = detection_results.get('algorithms_used', [])\n        confidences = [detection_results.get('overall_confidence', 0.0)] * len(algorithms)\n        \n        if algorithms and confidences:\n            ax2.bar(algorithms, confidences, color='lightcoral', alpha=0.7)\n            ax2.set_title('Algorithm Confidence Scores')\n            ax2.set_ylabel('Confidence')\n            ax2.set_ylim(0, 1)\n            ax2.tick_params(axis='x', rotation=45)\n        else:\n            ax2.text(0.5, 0.5, 'No algorithm data', ha='center', va='center', transform=ax2.transAxes)\n            ax2.set_title('Algorithm Analysis')\n        \n        plt.tight_layout()\n        \n        # Save to bytes\n        chart_buffer = io.BytesIO()\n        plt.savefig(chart_buffer, format='PNG', dpi=150, bbox_inches='tight')\n        plt.close()\n        \n        return chart_buffer.getvalue()\n    \n    async def cleanup_old_assets(self, days_old: int = 30) -> int:\n        \"\"\"Clean up assets older than specified days\"\"\"\n        \n        try:\n            cutoff_date = datetime.now() - timedelta(days=days_old)\n            deleted_count = 0\n            \n            if self.cloud_storage_enabled:\n                # Clean up S3 assets\n                response = self.s3_client.list_objects_v2(\n                    Bucket=self.bucket_name,\n                    Prefix='change-detections/'\n                )\n                \n                for obj in response.get('Contents', []):\n                    if obj['LastModified'].replace(tzinfo=None) < cutoff_date:\n                        self.s3_client.delete_object(\n                            Bucket=self.bucket_name,\n                            Key=obj['Key']\n                        )\n                        deleted_count += 1\n            \n            # Clean up local assets\n            local_cleanup_count = self._cleanup_local_assets(cutoff_date)\n            deleted_count += local_cleanup_count\n            \n            logger.info(f\"Cleaned up {deleted_count} old assets\")\n            return deleted_count\n            \n        except Exception as e:\n            logger.error(f\"Error cleaning up assets: {str(e)}\")\n            return 0\n    \n    def _cleanup_local_assets(self, cutoff_date: datetime) -> int:\n        \"\"\"Clean up local asset files\"\"\"\n        \n        deleted_count = 0\n        \n        try:\n            for root, dirs, files in os.walk(self.local_assets_dir):\n                for file in files:\n                    file_path = os.path.join(root, file)\n                    file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))\n                    \n                    if file_mtime < cutoff_date:\n                        os.remove(file_path)\n                        deleted_count += 1\n            \n        except Exception as e:\n            logger.error(f\"Error cleaning up local assets: {str(e)}\")\n        \n        return deleted_count\n    \n    def get_asset_stats(self) -> Dict:\n        \"\"\"Get statistics about stored assets\"\"\"\n        \n        stats = {\n            \"cloud_storage_enabled\": self.cloud_storage_enabled,\n            \"local_assets_count\": 0,\n            \"cloud_assets_count\": 0,\n            \"total_size_mb\": 0.0\n        }\n        \n        try:\n            # Count local assets\n            if os.path.exists(self.local_assets_dir):\n                local_count = 0\n                local_size = 0\n                \n                for root, dirs, files in os.walk(self.local_assets_dir):\n                    for file in files:\n                        local_count += 1\n                        file_path = os.path.join(root, file)\n                        local_size += os.path.getsize(file_path)\n                \n                stats[\"local_assets_count\"] = local_count\n                stats[\"total_size_mb\"] += local_size / (1024 * 1024)\n            \n            # Count cloud assets\n            if self.cloud_storage_enabled:\n                try:\n                    response = self.s3_client.list_objects_v2(Bucket=self.bucket_name)\n                    cloud_count = len(response.get('Contents', []))\n                    cloud_size = sum(obj['Size'] for obj in response.get('Contents', []))\n                    \n                    stats[\"cloud_assets_count\"] = cloud_count\n                    stats[\"total_size_mb\"] += cloud_size / (1024 * 1024)\n                    \n                except Exception as e:\n                    logger.warning(f\"Could not get cloud asset stats: {e}\")\n            \n        except Exception as e:\n            logger.error(f\"Error getting asset stats: {str(e)}\")\n        \n        return stats", "original_text": "        except Exception as e:\n            logger.warning(f\"Cloud storage not configured: {e}\")\n            self.s3_client = None\n            self.cloud_storage_enabled = False", "replace_all": false}]
+            logger.error(f"Error generating change detection GIF: {str(e)}")
+            raise
+    
+    def _normalize_image_for_display(self, image: np.ndarray) -> np.ndarray:
+        """
+        Normalize satellite image for display (0-255 RGB)
+        
+        Args:
+            image: Input satellite image (can be multi-band)
+            
+        Returns:
+            RGB image normalized to 0-255 range
+        """
+        # Take first 3 bands as RGB if more bands available
+        if image.ndim == 3 and image.shape[2] > 3:
+            rgb_image = image[:, :, :3]
+        else:
+            rgb_image = image
+        
+        # Handle grayscale
+        if rgb_image.ndim == 2:
+            rgb_image = np.stack([rgb_image] * 3, axis=-1)
+        
+        # Normalize to 0-1 range
+        if rgb_image.max() > 1.0:
+            # Assume 0-10000 range (typical for Sentinel-2)
+            rgb_image = np.clip(rgb_image / 3000.0, 0, 1)
+        
+        # Convert to 0-255 range
+        rgb_image = (rgb_image * 255).astype(np.uint8)
+        
+        # Apply contrast enhancement
+        rgb_image = self._enhance_contrast(rgb_image)
+        
+        return rgb_image
+    
+    def _enhance_contrast(self, image: np.ndarray) -> np.ndarray:
+        """Apply contrast enhancement to improve visibility"""
+        # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        
+        if image.ndim == 3:
+            # Convert to LAB color space for better enhancement
+            lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
+            lab[:, :, 0] = clahe.apply(lab[:, :, 0])
+            enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        else:
+            enhanced = clahe.apply(image)
+        
+        return enhanced
+    
+    def _resize_image(self, image: np.ndarray, max_size: int) -> np.ndarray:
+        """
+        Resize image while maintaining aspect ratio
+        
+        Args:
+            image: Input image
+            max_size: Maximum dimension size
+            
+        Returns:
+            Resized image
+        """
+        height, width = image.shape[:2]
+        
+        if height > width:
+            new_height = max_size
+            new_width = int(width * max_size / height)
+        else:
+            new_width = max_size
+            new_height = int(height * max_size / width)
+        
+        return cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+    
+    def _create_change_overlay(
+        self, 
+        base_image: np.ndarray, 
+        change_mask: np.ndarray,
+        detection_results: Dict[str, Any]
+    ) -> np.ndarray:
+        """
+        Create change detection overlay on base image
+        
+        Args:
+            base_image: Base RGB image
+            change_mask: Binary change detection mask
+            detection_results: Detection results for color coding
+            
+        Returns:
+            Image with change overlay
+        """
+        overlay = base_image.copy()
+        
+        # Determine overlay color based on detection type
+        detection_type = detection_results.get('primary_detection_type', 'unknown')
+        
+        color_map = {
+            'vegetation_loss': (255, 0, 0),      # Red for vegetation loss
+            'vegetation_gain': (0, 255, 0),      # Green for vegetation gain
+            'deforestation': (255, 100, 100),   # Light red for deforestation
+            'construction': (255, 165, 0),      # Orange for construction
+            'water_quality_change': (0, 100, 255),  # Blue for water changes
+            'coastal_erosion': (255, 255, 0),   # Yellow for coastal erosion
+            'unknown': (255, 0, 255)            # Magenta for unknown changes
+        }
+        
+        color = color_map.get(detection_type, color_map['unknown'])
+        
+        # Apply overlay where changes detected
+        change_pixels = change_mask > 0
+        if np.any(change_pixels):
+            # Create semi-transparent overlay
+            overlay[change_pixels] = overlay[change_pixels] * 0.6 + np.array(color) * 0.4
+        
+        return overlay.astype(np.uint8)
+    
+    def _add_title_to_frame(
+        self, 
+        frame: np.ndarray, 
+        title: str, 
+        confidence: float = 0.0
+    ) -> np.ndarray:
+        """
+        Add title and confidence score to frame
+        
+        Args:
+            frame: Input image frame
+            title: Title text
+            confidence: Confidence score to display
+            
+        Returns:
+            Frame with added title
+        """
+        # Convert to PIL for text rendering
+        pil_image = Image.fromarray(frame)
+        draw = ImageDraw.Draw(pil_image)
+        
+        # Try to load a font, fallback to default
+        try:
+            font = ImageFont.truetype("arial.ttf", 20)
+            small_font = ImageFont.truetype("arial.ttf", 14)
+        except:
+            try:
+                font = ImageFont.load_default()
+                small_font = ImageFont.load_default()
+            except:
+                font = None
+                small_font = None
+        
+        # Add title at the top
+        title_text = title
+        if font:
+            bbox = draw.textbbox((0, 0), title_text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+        else:
+            text_width = len(title_text) * 10
+            text_height = 20
+        
+        x = (frame.shape[1] - text_width) // 2
+        y = 10
+        
+        # Add background rectangle for text
+        draw.rectangle([x-5, y-5, x+text_width+5, y+text_height+5], fill=(0, 0, 0, 180))
+        
+        # Add title text
+        draw.text((x, y), title_text, fill=(255, 255, 255), font=font)
+        
+        # Add confidence score if provided
+        if confidence > 0:
+            conf_text = f"Confidence: {confidence:.1%}"
+            if small_font:
+                conf_bbox = draw.textbbox((0, 0), conf_text, font=small_font)
+                conf_width = conf_bbox[2] - conf_bbox[0]
+            else:
+                conf_width = len(conf_text) * 8
+            
+            conf_x = (frame.shape[1] - conf_width) // 2
+            conf_y = y + text_height + 5
+            
+            draw.rectangle([conf_x-3, conf_y-3, conf_x+conf_width+3, conf_y+15], fill=(0, 0, 0, 180))
+            draw.text((conf_x, conf_y), conf_text, fill=(255, 255, 0), font=small_font)
+        
+        return np.array(pil_image)
+    
+    def _create_side_by_side_comparison(
+        self,
+        before_image: np.ndarray,
+        after_image: np.ndarray,
+        detection_results: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> np.ndarray:
+        """
+        Create side-by-side comparison frame with statistics
+        
+        Args:
+            before_image: Before image
+            after_image: After image  
+            detection_results: Detection results
+            metadata: Additional metadata
+            
+        Returns:
+            Side-by-side comparison image
+        """
+        # Ensure both images have the same height
+        min_height = min(before_image.shape[0], after_image.shape[0])
+        before_resized = cv2.resize(before_image, (before_image.shape[1], min_height))
+        after_resized = cv2.resize(after_image, (after_image.shape[1], min_height))
+        
+        # Create side-by-side layout
+        combined_width = before_resized.shape[1] + after_resized.shape[1]
+        comparison = np.zeros((min_height, combined_width, 3), dtype=np.uint8)
+        
+        comparison[:, :before_resized.shape[1]] = before_resized
+        comparison[:, before_resized.shape[1]:] = after_resized
+        
+        # Convert to PIL for text overlay
+        pil_image = Image.fromarray(comparison)
+        draw = ImageDraw.Draw(pil_image)
+        
+        # Add labels
+        try:
+            font = ImageFont.truetype("arial.ttf", 16)
+        except:
+            font = None
+        
+        # Label "BEFORE"
+        draw.text((10, 10), "BEFORE", fill=(255, 255, 255), font=font)
+        
+        # Label "AFTER" 
+        after_x = before_resized.shape[1] + 10
+        draw.text((after_x, 10), "AFTER", fill=(255, 255, 255), font=font)
+        
+        # Add statistics at the bottom
+        stats_y = min_height - 60
+        stats_text = [
+            f"Confidence: {detection_results.get('overall_confidence', 0.0):.1%}",
+            f"Priority: {detection_results.get('priority_level', 'unknown').title()}"
+        ]
+        
+        if metadata:
+            analysis_type = metadata.get('analysis_type', 'comprehensive')
+            stats_text.append(f"Analysis: {analysis_type.title()}")
+        
+        for i, text in enumerate(stats_text):
+            draw.text((10, stats_y + i * 20), text, fill=(255, 255, 0), font=font)
+        
+        return np.array(pil_image)
+    
+    def generate_static_overlay_image(
+        self,
+        aoi_id: str,
+        base_image: np.ndarray,
+        detection_results: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Generate static overlay image showing all detections
+        
+        Args:
+            aoi_id: Area of Interest ID
+            base_image: Base satellite image
+            detection_results: List of detection results
+            
+        Returns:
+            URL path to the generated image
+        """
+        try:
+            # Generate filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"overlay_{aoi_id}_{timestamp}.png"
+            filepath = os.path.join(self.storage_path, filename)
+            
+            # Normalize base image
+            display_image = self._normalize_image_for_display(base_image)
+            
+            # Create overlay for each detection type
+            overlay = display_image.copy()
+            
+            for detection in detection_results:
+                if detection.get('change_detected', False):
+                    change_mask = np.array(detection.get('change_mask', []))
+                    if change_mask.size > 0:
+                        overlay = self._create_change_overlay(overlay, change_mask, detection)
+            
+            # Save as PNG
+            cv2.imwrite(filepath, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+            
+            logger.info(f"Generated static overlay image: {filename}")
+            return f"{self.assets_url_base}/{filename}"
+            
+        except Exception as e:
+            logger.error(f"Error generating static overlay image: {str(e)}")
+            raise
+    
+    def generate_statistical_chart(
+        self,
+        aoi_id: str,
+        detection_results: List[Dict[str, Any]],
+        chart_type: str = "confidence_bars"
+    ) -> str:
+        """
+        Generate statistical visualization chart
+        
+        Args:
+            aoi_id: Area of Interest ID
+            detection_results: Detection results to visualize
+            chart_type: Type of chart to generate
+            
+        Returns:
+            URL path to generated chart
+        """
+        try:
+            import matplotlib
+            matplotlib.use('Agg')  # Use non-interactive backend
+            import matplotlib.pyplot as plt
+            
+            # Generate filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"chart_{chart_type}_{aoi_id}_{timestamp}.png"
+            filepath = os.path.join(self.storage_path, filename)
+            
+            if chart_type == "confidence_bars":
+                # Create confidence bar chart
+                algorithms = []
+                confidences = []
+                
+                for detection in detection_results:
+                    if detection.get('change_detected', False):
+                        algorithms.append(detection.get('algorithm', 'Unknown'))
+                        confidences.append(detection.get('confidence', 0))
+                
+                if algorithms:
+                    plt.figure(figsize=(10, 6))
+                    bars = plt.bar(algorithms, confidences, color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4'])
+                    plt.title('Detection Confidence by Algorithm')
+                    plt.ylabel('Confidence Score')
+                    plt.ylim(0, 1)
+                    
+                    # Add value labels on bars
+                    for bar, conf in zip(bars, confidences):
+                        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                               f'{conf:.2f}', ha='center', va='bottom')
+                    
+                    plt.tight_layout()
+                    plt.savefig(filepath, dpi=150, bbox_inches='tight')
+                    plt.close()
+            
+            logger.info(f"Generated statistical chart: {filename}")
+            return f"{self.assets_url_base}/{filename}"
+            
+        except Exception as e:
+            logger.error(f"Error generating statistical chart: {str(e)}")
+            raise
+    
+    def cleanup_old_assets(self, days_old: int = 7):
+        """
+        Clean up assets older than specified days
+        
+        Args:
+            days_old: Remove assets older than this many days
+        """
+        try:
+            import time
+            import glob
+            
+            cutoff_time = time.time() - (days_old * 24 * 60 * 60)
+            
+            # Find all asset files
+            patterns = [
+                os.path.join(self.storage_path, "*.gif"),
+                os.path.join(self.storage_path, "*.png"),
+                os.path.join(self.storage_path, "*.jpg"),
+            ]
+            
+            cleaned_count = 0
+            for pattern in patterns:
+                for filepath in glob.glob(pattern):
+                    if os.path.getmtime(filepath) < cutoff_time:
+                        try:
+                            os.remove(filepath)
+                            cleaned_count += 1
+                        except OSError:
+                            pass
+            
+            logger.info(f"Cleaned up {cleaned_count} old asset files")
+            
+        except Exception as e:
+            logger.error(f"Error during asset cleanup: {str(e)}")
+    
+    def get_asset_info(self, asset_url: str) -> Dict[str, Any]:
+        """
+        Get information about an asset
+        
+        Args:
+            asset_url: Asset URL path
+            
+        Returns:
+            Dictionary with asset information
+        """
+        try:
+            # Extract filename from URL
+            filename = asset_url.split('/')[-1]
+            filepath = os.path.join(self.storage_path, filename)
+            
+            if os.path.exists(filepath):
+                stat = os.stat(filepath)
+                return {
+                    "filename": filename,
+                    "size_bytes": stat.st_size,
+                    "created_at": datetime.fromtimestamp(stat.st_ctime),
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime),
+                    "exists": True
+                }
+            else:
+                return {"exists": False}
+                
+        except Exception as e:
+            logger.error(f"Error getting asset info: {str(e)}")
+            return {"exists": False, "error": str(e)}

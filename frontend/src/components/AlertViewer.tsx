@@ -15,14 +15,24 @@ interface AOI {
   lastAlert?: Date
 }
 
+type AlertType = 'algal_bloom' | 'trash_dump' | 'illegal_construction' | 'vegetation_loss' | 'vegetation_gain' | 'deforestation' | 'construction' | 'coastal_erosion' | 'coastal_accretion' | 'water_quality_change' | 'other'
+
 interface Alert {
   id: string
   aoiId: string
-  type: 'algal_bloom' | 'trash_dump' | 'illegal_construction' | 'other'
+  type: AlertType
   confidence: number
   gifUrl: string
   timestamp: Date
   verified?: 'agree' | 'dismiss'
+  // Enhanced analysis fields
+  overall_confidence?: number
+  priority_level?: string
+  algorithm_results?: any[]
+  spectral_indices?: any
+  analysis_type?: string
+  algorithms_used?: string[]
+  detections?: any[]
 }
 
 interface AlertViewerProps {
@@ -34,6 +44,13 @@ const alertTypeLabels = {
   algal_bloom: 'Algal Bloom',
   trash_dump: 'Trash Dump',
   illegal_construction: 'Illegal Construction',
+  vegetation_loss: 'Vegetation Loss',
+  vegetation_gain: 'Vegetation Gain',
+  deforestation: 'Deforestation',
+  construction: 'Construction Activity',
+  coastal_erosion: 'Coastal Erosion',
+  coastal_accretion: 'Coastal Accretion',
+  water_quality_change: 'Water Quality Change',
   other: 'Other Anomaly',
 }
 
@@ -41,6 +58,13 @@ const alertTypeColors = {
   algal_bloom: 'text-green-700 bg-green-100',
   trash_dump: 'text-orange-700 bg-orange-100',
   illegal_construction: 'text-red-700 bg-red-100',
+  vegetation_loss: 'text-red-700 bg-red-100',
+  vegetation_gain: 'text-green-700 bg-green-100',
+  deforestation: 'text-red-700 bg-red-100',
+  construction: 'text-orange-700 bg-orange-100',
+  coastal_erosion: 'text-blue-700 bg-blue-100',
+  coastal_accretion: 'text-blue-700 bg-blue-100',
+  water_quality_change: 'text-purple-700 bg-purple-100',
   other: 'text-gray-700 bg-gray-100',
 }
 
@@ -48,6 +72,13 @@ const alertTypeEmojis = {
   algal_bloom: '🌊',
   trash_dump: '🗑️',
   illegal_construction: '🏗️',
+  vegetation_loss: '🌳❌',
+  vegetation_gain: '🌳✅',
+  deforestation: '🌲🔥',
+  construction: '🏗️',
+  coastal_erosion: '🏖️📉',
+  coastal_accretion: '🏖️📈',
+  water_quality_change: '💧⚠️',
   other: '⚠️',
 }
 
@@ -170,9 +201,9 @@ export default function AlertViewer({ selectedAOI, onBack }: AlertViewerProps) {
             <div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${alertTypeColors[latestAlert.type]}`}>
-                    <span>{alertTypeEmojis[latestAlert.type]}</span>
-                    <span>{alertTypeLabels[latestAlert.type]}</span>
+                  <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${(alertTypeColors as any)[latestAlert.type] || alertTypeColors.other}`}>
+                    <span>{(alertTypeEmojis as any)[latestAlert.type] || alertTypeEmojis.other}</span>
+                    <span>{(alertTypeLabels as any)[latestAlert.type] || alertTypeLabels.other}</span>
                   </div>
                   <span className="text-sm text-gray-500">
                     {new Date(latestAlert.timestamp).toLocaleDateString()}
@@ -182,24 +213,106 @@ export default function AlertViewer({ selectedAOI, onBack }: AlertViewerProps) {
                 {/* Confidence Bar */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">AI Confidence:</span>
+                    <span className="text-gray-600">
+                      {latestAlert.overall_confidence ? 'Overall AI Confidence:' : 'AI Confidence:'}
+                    </span>
                     <span className="font-semibold text-gray-900">
-                      {Math.round(latestAlert.confidence * 100)}%
+                      {Math.round((latestAlert.overall_confidence || latestAlert.confidence) * 100)}%
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${latestAlert.confidence * 100}%` }}
+                      animate={{ width: `${(latestAlert.overall_confidence || latestAlert.confidence) * 100}%` }}
                       transition={{ duration: 1, ease: "easeOut" }}
                       className={`h-2 rounded-full ${
-                        latestAlert.confidence >= 0.8 ? 'bg-red-500' :
-                        latestAlert.confidence >= 0.6 ? 'bg-orange-500' :
+                        (latestAlert.overall_confidence || latestAlert.confidence) >= 0.8 ? 'bg-red-500' :
+                        (latestAlert.overall_confidence || latestAlert.confidence) >= 0.6 ? 'bg-orange-500' :
                         'bg-yellow-500'
                       }`}
                     />
                   </div>
+                  {/* Show priority level if available */}
+                  {latestAlert.priority_level && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Priority Level:</span>
+                      <span className={`font-semibold px-2 py-1 rounded text-xs ${
+                        latestAlert.priority_level === 'high' ? 'bg-red-100 text-red-700' :
+                        latestAlert.priority_level === 'medium' ? 'bg-orange-100 text-orange-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {latestAlert.priority_level.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                 </div>
+
+                {/* Enhanced Analysis Details */}
+                {(latestAlert.algorithms_used || latestAlert.analysis_type || latestAlert.detections) && (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <h4 className="font-semibold text-gray-900">Analysis Details</h4>
+
+                    {/* Analysis Type */}
+                    {latestAlert.analysis_type && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Analysis Type:</span>
+                        <span className="font-medium text-gray-900 capitalize">{latestAlert.analysis_type}</span>
+                      </div>
+                    )}
+
+                    {/* Algorithms Used */}
+                    {latestAlert.algorithms_used && latestAlert.algorithms_used.length > 0 && (
+                      <div className="text-sm">
+                        <span className="text-gray-600">Algorithms Used:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {latestAlert.algorithms_used.map((algorithm: string, index: number) => (
+                            <span key={index} className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                              {algorithm}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Detections Summary */}
+                    {latestAlert.detections && latestAlert.detections.length > 0 && (
+                      <div className="text-sm">
+                        <span className="text-gray-600">Detections Found:</span>
+                        <div className="space-y-1 mt-1">
+                          {latestAlert.detections.slice(0, 3).map((detection: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between bg-white rounded px-2 py-1">
+                              <span className="text-gray-700 capitalize">
+                                {detection.type?.replace('_', ' ') || detection.algorithm}
+                              </span>
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                detection.confidence >= 0.8 ? 'bg-red-100 text-red-700' :
+                                detection.confidence >= 0.6 ? 'bg-orange-100 text-orange-700' :
+                                'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {Math.round(detection.confidence * 100)}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Spectral Indices Preview */}
+                    {latestAlert.spectral_indices && (
+                      <div className="text-sm">
+                        <span className="text-gray-600">Key Spectral Indices:</span>
+                        <div className="grid grid-cols-2 gap-2 mt-1">
+                          {Object.entries(latestAlert.spectral_indices).slice(0, 4).map(([key, value]: [string, any]) => (
+                            <div key={key} className="bg-white rounded px-2 py-1 text-xs">
+                              <span className="text-gray-600 uppercase">{key}:</span>
+                              <span className="text-gray-900 ml-1">{typeof value === 'number' ? value.toFixed(2) : value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Verification Section */}

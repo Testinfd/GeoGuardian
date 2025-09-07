@@ -167,13 +167,15 @@ class SentinelDataFetcher:
         imagery_data = []
         for attempt in range(self.config.retry_attempts):
             try:
-                logger.debug(f"Fetching attempt {attempt + 1}/{self.config.retry_attempts}")\n                
+                logger.debug(f"Fetching attempt {attempt + 1}/{self.config.retry_attempts}")
+
                 # Get data with timeout
                 data = request.get_data(save_data=False)
                 
                 if data and len(data) > 0:
                     # Process each image
-                    for i, img_data in enumerate(data):\n                        if img_data is not None and img_data.size > 0:
+                    for i, img_data in enumerate(data):
+                        if img_data is not None and img_data.size > 0:
                             # Calculate cloud coverage and quality metrics
                             cloud_coverage = self._calculate_cloud_coverage(img_data)
                             quality_score = self._calculate_quality_score(img_data, cloud_coverage)
