@@ -22,6 +22,7 @@ class AlertType(str, Enum):
     ALGAL_BLOOM = "algal_bloom"
     URBAN_EXPANSION = "urban_expansion"
     UNKNOWN = "unknown"
+    OTHER = "unknown"  # Alias for backward compatibility
 
 
 class VoteType(str, Enum):

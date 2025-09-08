@@ -734,3 +734,87 @@ class AdvancedAnalysisEngine:
         overlay[change_mask > 0] = color
 
         return overlay
+    
+    def _generate_analysis_summary(self, results: Dict) -> str:
+        """Generate human-readable analysis summary"""
+        detections = results.get('detections', [])
+        detected_changes = [d for d in detections if d.get('change_detected', False)]
+        
+        if not detected_changes:
+            return "No significant environmental changes detected in the monitored area."
+        
+        summary_parts = []
+        for detection in detected_changes:
+            detection_type = detection.get('type', 'unknown').replace('_', ' ').title()
+            confidence = detection.get('confidence', 0)
+            severity = detection.get('severity', 'unknown')
+            
+            summary_parts.append(
+                f"{detection_type} detected with {confidence:.1%} confidence (severity: {severity})"
+            )
+        
+        overall_confidence = results.get('overall_confidence', 0)
+        return f"Analysis Summary (Overall confidence: {overall_confidence:.1%}):\n" + "\n".join(summary_parts)
+    
+    def _generate_recommendations(self, results: Dict) -> List[str]:
+        """Generate actionable recommendations based on analysis results"""
+        recommendations = []
+        detections = results.get('detections', [])
+        detected_changes = [d for d in detections if d.get('change_detected', False)]
+        
+        if not detected_changes:
+            recommendations.extend([
+                "Continue regular monitoring of the area",
+                "Consider expanding monitoring to adjacent areas",
+                "Review monitoring parameters if changes are expected"
+            ])
+            return recommendations
+        
+        # Type-specific recommendations
+        for detection in detected_changes:
+            detection_type = detection.get('type', '')
+            confidence = detection.get('confidence', 0)
+            
+            if 'vegetation' in detection_type or 'deforestation' in detection_type:
+                if confidence > 0.8:
+                    recommendations.append("Urgent: Investigate vegetation loss immediately")
+                    recommendations.append("Consider contacting local environmental authorities")
+                else:
+                    recommendations.append("Monitor vegetation changes closely")
+                    recommendations.append("Verify changes with ground truth data")
+            
+            elif 'construction' in detection_type:
+                recommendations.append("Verify if construction activity is authorized")
+                recommendations.append("Monitor for potential environmental impact")
+            
+            elif 'coastal' in detection_type:
+                recommendations.append("Assess coastal erosion/accretion patterns")
+                recommendations.append("Consider coastal protection measures if needed")
+            
+            elif 'water' in detection_type:
+                recommendations.append("Monitor water quality parameters")
+                recommendations.append("Check for pollution sources if quality declined")
+        
+        # General recommendations
+        recommendations.extend([
+            "Increase monitoring frequency for detected change areas",
+            "Document changes for trend analysis",
+            "Consider ground-truth verification for high-confidence detections"
+        ])
+        
+        return recommendations[:5]  # Limit to top 5 recommendations
+    
+    def _extract_bounds(self, geojson: Dict) -> List[float]:
+        """Extract bounding box from GeoJSON geometry"""
+        try:
+            if geojson.get('type') == 'Polygon':
+                coordinates = geojson['coordinates'][0]  # First ring
+                lons = [coord[0] for coord in coordinates]
+                lats = [coord[1] for coord in coordinates]
+                return [min(lons), min(lats), max(lons), max(lats)]
+            else:
+                # Default bounds if extraction fails
+                return [-180, -90, 180, 90]
+        except Exception as e:
+            logger.warning(f"Error extracting bounds from GeoJSON: {e}")
+            return [-180, -90, 180, 90]

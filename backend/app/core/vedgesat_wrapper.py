@@ -463,3 +463,14 @@ class VedgeSatWrapper:
                 logger.info(f"Updated VedgeSat parameter {key} to {value}")
             else:
                 logger.warning(f"Unknown configuration parameter: {key}")
+    
+    def is_available(self) -> bool:
+        """Check if VedgeSat processing is available"""
+        try:
+            # Simple availability check - verify we can process images
+            test_image = np.zeros((10, 10), dtype=np.uint8)
+            processed = self._preprocess_image(test_image)
+            return processed is not None and processed.size > 0
+        except Exception as e:
+            logger.warning(f"VedgeSat availability check failed: {e}")
+            return False
