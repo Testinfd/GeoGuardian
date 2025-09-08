@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronLeftIcon } from '@heroicons/react/24/outline'
 import { aoiAPI } from '@/services/api'
 import toast from 'react-hot-toast'
+import HistoricalTrendsViewer from './HistoricalTrendsViewer'
 
 interface AOI {
   id: string
@@ -84,6 +85,7 @@ const alertTypeEmojis = {
 
 export default function AlertViewer({ selectedAOI, onBack }: AlertViewerProps) {
   const [verifyingAlert, setVerifyingAlert] = useState<string | null>(null)
+  const [showHistoricalTrends, setShowHistoricalTrends] = useState(false)
 
   const { data: alerts = [], isLoading, refetch } = useQuery({
     queryKey: ['alerts', selectedAOI.id],
@@ -417,6 +419,38 @@ export default function AlertViewer({ selectedAOI, onBack }: AlertViewerProps) {
               </div>
             )}
           </motion.div>
+        )}
+        
+        {/* Historical Trends Section */}
+        {!showHistoricalTrends ? (
+          <div className="mt-6 border-t border-gray-200 pt-6">
+            <button
+              onClick={() => setShowHistoricalTrends(true)}
+              className="w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg p-4 transition-colors group"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-left">
+                  <h4 className="font-semibold text-indigo-900 group-hover:text-indigo-700">
+                    📈 View Historical Trends
+                  </h4>
+                  <p className="text-sm text-indigo-600 mt-1">
+                    Analyze long-term environmental changes over 12 months
+                  </p>
+                </div>
+                <svg className="w-5 h-5 text-indigo-600 group-hover:text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </button>
+          </div>
+        ) : (
+          <div className="mt-6 border-t border-gray-200 pt-6">
+            <HistoricalTrendsViewer
+              aoiId={selectedAOI.id}
+              aoiName={selectedAOI.name}
+              onClose={() => setShowHistoricalTrends(false)}
+            />
+          </div>
         )}
       </div>
     </div>

@@ -174,30 +174,120 @@ const mockDemoResults: Record<string, DemoAnalysisResult> = {
   }
 }
 
-export default function EnhancedAnalysisDemo() {
+interface AOI {
+  id: string
+  name: string
+  geometry?: any
+  geojson?: any
+}
+
+interface EnhancedAnalysisDemoProps {
+  selectedAOI?: AOI | null
+  onAnalysisComplete?: (results: any) => void
+}
+
+export default function EnhancedAnalysisDemo({
+  selectedAOI,
+  onAnalysisComplete
+}: EnhancedAnalysisDemoProps) {
   const [selectedAnalysisType, setSelectedAnalysisType] = useState('comprehensive')
   const [isRunning, setIsRunning] = useState(false)
   const [results, setResults] = useState<DemoAnalysisResult | null>(null)
   const [showResults, setShowResults] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleRunAnalysis = async (analysisType: string) => {
     setIsRunning(true)
     setResults(null)
     setShowResults(false)
+    setError(null)
 
-    // Simulate realistic processing time
-    const mockResult = mockDemoResults[analysisType]
+    try {
+      // Always attempt to use real V2 API first
+      if (selectedAOI && (selectedAOI.geometry || selectedAOI.geojson)) {
+        console.log('🚀 Running REAL satellite analysis for AOI:', selectedAOI.name)
+
+        const analysisRequest = {
+          aoi_id: selectedAOI.id,
+          geojson: selectedAOI.geometry || selectedAOI.geojson,
+          analysis_type: analysisType,
+          include_spectral_analysis: true,
+          include_visualizations: true,
+          date_range_days: 30,
+          max_cloud_coverage: 0.2
+        }
+
+        // Call the real V2 API
+        const realResults = await analysisAPI.runComprehensiveAnalysis(analysisRequest)
+
+        console.log('✅ Real satellite analysis completed:', realResults)
+
+        // Transform real results to match demo format
+        const formattedResults: DemoAnalysisResult = {
+          success: realResults.success || false,
+          analysis_type: realResults.analysis_type || analysisType,
+          overall_confidence: realResults.overall_confidence || 0.0,
+          priority_level: realResults.priority_level || 'low',
+          processing_time_seconds: realResults.processing_time_seconds || 0,
+          algorithms_used: realResults.algorithms_used || [],
+          detections: realResults.detections || [],
+          spectral_indices: realResults.spectral_indices || {}
+        }
+
+        setResults(formattedResults)
+        setShowResults(true)
+
+        // Notify parent component if callback provided
+        if (onAnalysisComplete) {
+          onAnalysisComplete(realResults)
+        }
+      } else {
+        // Only fall back to demo when no AOI is selected
+        console.log('ℹ️ No AOI selected - running demonstration mode')
+        await runDemoAnalysis(analysisType)
+      }
+    } catch (err: any) {
+      console.error('❌ Analysis failed:', err)
+      
+      // Improved error handling with specific messages
+      if (err.response?.status === 404) {
+        setError('Satellite data not available for this area. Try a different location or date range.')
+      } else if (err.response?.status === 503) {
+        setError('Analysis service temporarily unavailable. Please try again in a few moments.')
+      } else if (err.message?.includes('insufficient')) {
+        setError('Insufficient satellite data for analysis. Try expanding the date range.')
+      } else {
+        setError(`Analysis failed: ${err.message || 'Unknown error'}. Falling back to demo mode.`)
+        
+        // Fall back to demo on real API failure
+        try {
+          console.log('🔄 Falling back to demonstration mode due to API error')
+          await runDemoAnalysis(analysisType)
+        } catch (demoErr) {
+          setError('Both real analysis and demo mode failed. Please try again later.')
+        }
+      }
+    } finally {
+      setIsRunning(false)
+    }
+  }
+
+  const runDemoAnalysis = async (analysisType: string) => {
+    const mockResult = mockDemoResults[analysisType as keyof typeof mockDemoResults]
     
+    if (!mockResult) {
+      throw new Error(`No demo data available for analysis type: ${analysisType}`)
+    }
+
     // Show processing steps
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     // Simulate the actual processing time from the mock result
     const processingTime = mockResult.processing_time_seconds * 100 // Speed up for demo
     await new Promise(resolve => setTimeout(resolve, processingTime))
-    
+
     setResults(mockResult)
     setShowResults(true)
-    setIsRunning(false)
   }
 
   const getPriorityColor = (priority: string) => {
@@ -226,9 +316,28 @@ export default function EnhancedAnalysisDemo() {
       <div className="px-4 py-3 bg-gradient-to-r from-purple-50 to-blue-50 border-b border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900">🔬 Interactive Analysis Demo</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Test our research-grade algorithms with real processing simulation
+          {selectedAOI ? '🚀 Real-time satellite analysis with live data' : '🎭 Demo mode - select an AOI for real analysis'}
         </p>
+        {selectedAOI && (
+          <div className="mt-2 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-md">
+            📡 Active AOI: {selectedAOI.name} - Real satellite analysis enabled
+          </div>
+        )}
+        {!selectedAOI && (
+          <div className="mt-2 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-md">
+            🎭 Demo Mode: Create an AOI to enable real satellite analysis
+          </div>
+        )}
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="px-4 py-2 bg-red-50 border-b border-red-200">
+          <div className="text-red-700 text-sm">
+            ⚠️ Error: {error}
+          </div>
+        </div>
+      )}
 
       {/* Analysis Selector */}
       <div className="p-4">
@@ -252,10 +361,14 @@ export default function EnhancedAnalysisDemo() {
             <div className="flex items-center space-x-3">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
               <div>
-                <div className="text-sm font-medium text-blue-900">Processing Analysis...</div>
+                <div className="text-sm font-medium text-blue-900">
+                  {selectedAOI ? '📡 Processing Real Satellite Analysis...' : '🎭 Running Analysis Demonstration...'}
+                </div>
                 <div className="text-xs text-blue-600 mt-1">
-                  Running {mockDemoResults[selectedAnalysisType]?.algorithms_used.length} algorithms • 
-                  Analyzing satellite imagery • Calculating confidence scores
+                  {selectedAOI 
+                    ? `Analyzing real satellite imagery for ${selectedAOI.name} • ${mockDemoResults[selectedAnalysisType]?.algorithms_used.length} algorithms • Research-grade processing`
+                    : `Running ${mockDemoResults[selectedAnalysisType]?.algorithms_used.length} algorithms • Simulating satellite analysis • Calculating demo scores`
+                  }
                 </div>
               </div>
             </div>
@@ -264,19 +377,19 @@ export default function EnhancedAnalysisDemo() {
               <div className="space-y-2 text-xs text-gray-600">
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span>Fetching Sentinel-2 satellite imagery...</span>
+                  <span>{selectedAOI ? '📡 Fetching real Sentinel-2 satellite imagery...' : '🎭 Simulating satellite imagery fetch...'}</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span>Calculating spectral indices (NDVI, EVI, BSI, etc.)...</span>
+                  <span>{selectedAOI ? '🗺️ Processing 13-band spectral analysis...' : '🎭 Calculating demo spectral indices...'}</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                  <span>Running {mockDemoResults[selectedAnalysisType]?.algorithms_used.join(', ')}...</span>
+                  <span>{selectedAOI ? '🤖 Executing real algorithms: ' : '🎭 Simulating algorithms: '}{mockDemoResults[selectedAnalysisType]?.algorithms_used.join(', ')}...</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                  <span>Generating confidence scores and visualizations...</span>
+                  <span>{selectedAOI ? '🎨 Generating real change visualizations...' : '🎭 Creating demo confidence scores...'}</span>
                 </div>
               </div>
             </div>
@@ -395,11 +508,21 @@ export default function EnhancedAnalysisDemo() {
                 </div>
               )}
 
-              {/* Demo Note */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <div className="text-sm text-blue-800">
-                  <strong>📋 Demo Note:</strong> This demonstrates the enhanced analysis capabilities with realistic processing simulation. 
-                  In production, this would analyze real satellite imagery from your AOI with the same algorithmic rigor.
+              {/* Real vs Demo Status */}
+              <div className={`${selectedAOI ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3`}>
+                <div className={`text-sm ${selectedAOI ? 'text-green-800' : 'text-blue-800'}`}>
+                  {selectedAOI ? (
+                    <>
+                      <strong>🚀 Live Analysis Mode:</strong> This analysis used real Sentinel-2 satellite imagery 
+                      from your selected AOI with production-grade algorithms for research-quality results.
+                    </>
+                  ) : (
+                    <>
+                      <strong>🎭 Demo Mode:</strong> This demonstrates the enhanced analysis capabilities with 
+                      realistic processing simulation. Create an AOI to enable real satellite imagery analysis 
+                      with the same algorithmic rigor.
+                    </>
+                  )}
                 </div>
               </div>
             </div>

@@ -15,8 +15,8 @@ api.interceptors.request.use(async (config) => {
   try {
     const session = await getSession()
     if (session?.user?.email) {
-      // Use email as identifier since id might not be available
-      config.headers.Authorization = `Bearer ${session.user.email}`
+      // Use NextAuth email-based authentication
+      config.headers.Authorization = `Bearer nextauth_${session.user.email}`
     }
     // If no session, continue without auth - app works anonymously
   } catch (error) {
@@ -299,6 +299,21 @@ export const analysisAPI = {
       date_range_days: options?.date_range_days || 60,
       algorithms: options?.algorithms || ['cusum_deforestation', 'ewma_vegetation', 'spectral_analysis']
     })
+  },
+
+  // Historical trend analysis
+  runHistoricalAnalysis: async (aoi_id: string, options?: {
+    analysis_type?: string;
+    months_back?: number;
+    interval_days?: number;
+  }) => {
+    const response = await api.post('/api/v2/analyze/historical', {
+      aoi_id,
+      analysis_type: options?.analysis_type || 'comprehensive',
+      months_back: options?.months_back || 12,
+      interval_days: options?.interval_days || 30
+    })
+    return response.data
   },
   
   // Enhanced monitoring and status endpoints

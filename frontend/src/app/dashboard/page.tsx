@@ -215,7 +215,13 @@ export default function DashboardPage() {
               
               {/* Interactive Analysis Demo */}
               {showEnhancedFeatures && (
-                <EnhancedAnalysisDemo />
+                <EnhancedAnalysisDemo
+                  selectedAOI={selectedAOI}
+                  onAnalysisComplete={(results) => {
+                    console.log('Analysis completed:', results)
+                    // Optionally refresh alerts or update UI
+                  }}
+                />
               )}
               
               {/* AOI Management */}
