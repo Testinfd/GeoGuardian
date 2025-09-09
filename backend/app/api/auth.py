@@ -4,7 +4,7 @@ from supabase import Client
 from pydantic import BaseModel
 from typing import Optional
 from ..core.auth import verify_google_token, get_or_create_user, get_current_user
-from ..core.database import get_supabase
+from ..core.database import get_supabase, get_supabase_admin
 from ..utils.email import email_service
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -44,13 +44,18 @@ async def authenticate_with_google(
     supabase: Client = Depends(get_supabase)
 ):
     """Authenticate user with Google OAuth token"""
-    
+
     # Verify Google token
     user_data = await verify_google_token(request.token)
-    
-    # Get or create user
-    user = await get_or_create_user(user_data, supabase)
-    
+
+    # Get or create user (use admin client to bypass RLS)
+    try:
+        supabase_admin = get_supabase_admin()
+        user = await get_or_create_user(user_data, supabase_admin)
+    except Exception:
+        # Fallback to regular client if admin not available
+        user = await get_or_create_user(user_data, supabase)
+
     # Sign in with Supabase to get access token
     try:
         auth_response = supabase.auth.sign_in_with_oauth_credentials({
@@ -61,13 +66,13 @@ async def authenticate_with_google(
     except Exception:
         # Fallback: create a simple session
         access_token = request.token  # Use the Google token temporarily
-    
+
     # Send welcome email for new users (optional, non-blocking)
     try:
         await email_service.send_welcome_email(user.email, user.name)
     except Exception:
         pass  # Don't fail auth if email fails
-    
+
     return AuthResponse(
         access_token=access_token,
         token_type="bearer",
@@ -139,15 +144,29 @@ async def login_user(
             "email": request.email,
             "password": request.password
         })
-        
-        if auth_response.user and auth_response.session:
-            # For MVP: Use Supabase user data directly, skip our users table due to RLS
-            # TODO: Configure RLS policies or use service role key
 
+        if auth_response.user and auth_response.session:
+            # Try to get user from our users table first
+            try:
+                user_response = supabase.table("users").select("*").eq("id", auth_response.user.id).execute()
+                if user_response.data and len(user_response.data) > 0:
+                    user_data = user_response.data[0]
+                    return {
+                        "id": user_data["id"],
+                        "email": user_data["email"],
+                        "name": user_data["name"],
+                        "picture": user_data["picture"],
+                        "access_token": auth_response.session.access_token
+                    }
+            except Exception:
+                pass  # Fall back to Supabase user data
+
+            # Fallback to Supabase user data
             return {
                 "id": auth_response.user.id,
                 "email": auth_response.user.email,
                 "name": auth_response.user.user_metadata.get("name", auth_response.user.email),
+                "picture": auth_response.user.user_metadata.get("picture"),
                 "access_token": auth_response.session.access_token
             }
         else:
@@ -155,7 +174,7 @@ async def login_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password"
             )
-            
+
     except Exception as e:
         if "invalid" in str(e).lower():
             raise HTTPException(

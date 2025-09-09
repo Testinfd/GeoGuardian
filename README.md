@@ -70,9 +70,9 @@ graph TD
    ```
 
 2. **Choose your role**:
-   - **Frontend Developer**: See [DEPLOYMENT_QUICKSTART.md](./DEPLOYMENT_QUICKSTART.md)
-   - **Backend Developer**: See [docs/DEPLOYMENT_INSTRUCTIONS.md](./docs/DEPLOYMENT_INSTRUCTIONS.md)
-   - **Full Stack**: See [docs/README_SETUP.md](./docs/README_SETUP.md)
+   - **Frontend Developer**: See [Setup & Deployment Guide](./docs/setup/DEPLOYMENT_INSTRUCTIONS.md)
+   - **Backend Developer**: See [Setup & Deployment Guide](./docs/setup/DEPLOYMENT_INSTRUCTIONS.md)
+   - **Full Stack**: See [Setup & Deployment Guide](./docs/setup/DEPLOYMENT_INSTRUCTIONS.md)
 
 3. **Start development**:
    ```bash
@@ -92,13 +92,19 @@ graph TD
 ### 📁 Project Structure
 ```
 geoguardian/
-├── frontend/           # Next.js + TypeScript frontend
-├── backend/            # Python FastAPI backend
-├── docs/              # All documentation and guides
-├── app/               # Legacy app directory
+├── frontend-simple/    # Next.js + TypeScript frontend
+├── backend/           # Python FastAPI backend
+├── docs/              # Organized documentation and guides
 ├── .gitignore         # Git ignore rules
-└── *.md              # Quick reference docs
+└── README.md          # Main project documentation
 ```
+
+### 📚 Documentation
+All technical documentation is organized in the [`docs/`](./docs/) directory:
+- **[📋 Documentation Index](./docs/README.md)** - Complete documentation overview
+- **[🚀 Setup & Deployment](./docs/setup/DEPLOYMENT_INSTRUCTIONS.md)** - Installation and deployment guides
+- **[🖥️ Backend Documentation](./docs/backend/BACKEND_STATUS_REPORT.md)** - Backend architecture and API details
+- **[🌐 Frontend Documentation](./docs/frontend/)** - Frontend features and implementation
 
 ## 🧪 Project Status & Roadmap
 

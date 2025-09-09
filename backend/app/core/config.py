@@ -31,10 +31,17 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "your-jwt-secret-here"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
+
+    # NextAuth Secret for frontend integration
+    NEXTAUTH_SECRET: Optional[str] = None
+
+    # Google OAuth (for frontend integration)
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
-    
+
     # Environment
     ENVIRONMENT: str = "development"
     

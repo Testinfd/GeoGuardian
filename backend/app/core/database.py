@@ -8,6 +8,9 @@ supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_K
 supabase_admin: Client = None
 if settings.SUPABASE_SERVICE_ROLE_KEY:
     supabase_admin = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+    print("✅ Supabase admin client initialized (RLS bypassed)")
+else:
+    print("⚠️  Supabase service role key not configured - RLS may cause issues")
 
 
 def get_supabase() -> Client:
