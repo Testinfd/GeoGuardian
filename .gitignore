@@ -31,6 +31,8 @@ coverage.xml
 *~
 .DS_Store
 Thumbs.db
+.qoder/
+.qoder/rules.json
 
 # Environment Variables & Secrets
 .env

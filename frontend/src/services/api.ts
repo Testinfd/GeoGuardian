@@ -4,8 +4,9 @@
  */
 
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
-import { getSession } from 'next-auth/react'
 import { API_ENDPOINTS } from '@/utils/constants'
+import { supabase } from '@/lib/supabase-auth'
+import { useAuthStore } from '@/stores/auth'
 import type {
   // Auth types
   User, AuthResponse, LoginRequest, RegisterRequest, GoogleOAuthRequest,
@@ -38,23 +39,23 @@ class ApiClient {
     // Request interceptor to add auth token
     this.client.interceptors.request.use(
       async (config) => {
-        // Try to get token from NextAuth session first
+        // Try to get token from Supabase session
         try {
-          if (typeof window !== 'undefined') {
-            const session = await getSession()
-            if (session?.accessToken) {
-              config.headers.Authorization = `Bearer ${session.accessToken}`
-              return config
-            }
+          const { data } = await supabase.auth.getSession();
+          const token = data.session?.access_token;
+          
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`
+            return config
           }
         } catch (error) {
-          console.warn('Failed to get NextAuth session:', error)
+          console.warn('Failed to get Supabase session:', error)
         }
 
         // Fallback to localStorage (legacy auth)
-        const token = localStorage.getItem('auth_token')
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`
+        const storedToken = localStorage.getItem('auth_token')
+        if (storedToken) {
+          config.headers.Authorization = `Bearer ${storedToken}`
         } else {
           console.log('No authentication token found - API call may fail')
         }
@@ -76,11 +77,12 @@ class ApiClient {
             // Clear localStorage tokens
             localStorage.removeItem('auth_token')
             
-            // Only redirect if we're not already on the login page to prevent loops
+            // Clear auth store
+            useAuthStore.getState().logout()
+            
+            // Redirect if we're not already on the login page
             if (!window.location.pathname.includes('/auth/login')) {
-              // Use NextAuth signOut to properly clear session
-              const { signOut } = await import('next-auth/react')
-              await signOut({ callbackUrl: '/auth/login?error=Session expired' })
+              window.location.href = '/auth/login?error=Session expired'
             }
           }
         }
@@ -134,7 +136,7 @@ export const authAPI = {
     return apiClient.get(API_ENDPOINTS.AUTH.ME)
   },
 
-  refreshToken: async (): Promise<AxiosResponse<AuthResponse>> => {
+  refreshToken: async (): Promise<AxiosResponse<any>> => {
     return apiClient.post(API_ENDPOINTS.AUTH.REFRESH)
   },
 
@@ -319,6 +321,14 @@ export const alertApi = alertsAPI
 export const authApi = authAPI
 export const analysisApi = analysisAPI
 
+// Export types for components
+export type { 
+  AOI, CreateAOIRequest, UpdateAOIRequest,
+  AnalysisRequest, AnalysisResult, 
+  Alert, AlertVerificationRequest,
+  User, AuthResponse 
+}
+
 // Default export
 export default {
   auth: authAPI,
@@ -328,12 +338,4 @@ export default {
   
   // Direct access to axios instance for custom requests
   client: apiClient,
-}
-
-// Export types for components
-export type { 
-  AOI, CreateAOIRequest, UpdateAOIRequest,
-  AnalysisRequest, AnalysisResult, 
-  Alert, AlertVerificationRequest,
-  User, AuthResponse 
 }

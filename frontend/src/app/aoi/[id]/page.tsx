@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useParams } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useIsAuthenticated } from '@/stores/auth'
 import { 
   ArrowLeft, 
   Edit,
@@ -199,8 +199,14 @@ function RecentAlerts({ alerts, onViewAlert }: RecentAlertsProps) {
 export default function AOIDetailsPage() {
   const router = useRouter()
   const params = useParams()
-  const { data: session } = useSession()
-  
+  const isAuthenticated = useIsAuthenticated()
+  const [isClient, setIsClient] = useState(false)
+
+  // Mark when we're on the client side
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
   const aoiId = params.id as string
 
   // Store state
@@ -234,7 +240,7 @@ export default function AOIDetailsPage() {
 
   // Effects
   useEffect(() => {
-    if (!session) {
+    if (isClient && !isAuthenticated) {
       router.push('/auth/login')
       return
     }
@@ -242,7 +248,7 @@ export default function AOIDetailsPage() {
     if (aoiId) {
       loadAOIData()
     }
-  }, [aoiId, session])
+  }, [aoiId, isAuthenticated])
 
   const loadAOIData = async () => {
     try {
@@ -320,7 +326,7 @@ export default function AOIDetailsPage() {
     }
   }
 
-  if (!session) {
+  if (!isAuthenticated) {
     return null
   }
 

@@ -3,25 +3,6 @@
  * Defines interfaces for API responses, state management, and component props
  */
 
-// NextAuth session extension
-declare module "next-auth" {
-  interface Session {
-    accessToken?: string
-    userId?: string
-  }
-
-  interface User {
-    accessToken?: string
-  }
-}
-
-declare module "next-auth/jwt" {
-  interface JWT {
-    accessToken?: string
-    userId?: string
-  }
-}
-
 // =============================================================================
 // API Response Types
 // =============================================================================
@@ -52,31 +33,39 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string
   password: string
-  full_name?: string
+  full_name: string
 }
 
 export interface GoogleOAuthRequest {
   token: string
 }
 
+// Auth session interface
+export interface AuthSession {
+  user: User
+  access_token: string
+  expires_at: number
+  refresh_token: string
+}
+
 // Geospatial Types
-export interface GeoJSONPolygon {
+export type GeoJSONPolygon = {
   type: 'Polygon'
   coordinates: number[][][]
 }
 
-export interface GeoJSONFeature {
+export type GeoJSONFeature = {
   type: 'Feature'
   geometry: GeoJSONPolygon
   properties?: Record<string, any>
 }
 
-export interface LatLng {
+export type LatLng = {
   lat: number
   lng: number
 }
 
-export interface BoundingBox {
+export type BoundingBox = {
   north: number
   south: number
   east: number
@@ -84,7 +73,7 @@ export interface BoundingBox {
 }
 
 // AOI (Area of Interest) Types
-export interface AOI {
+export type AOI = {
   id: string
   name: string
   description?: string
@@ -98,7 +87,7 @@ export interface AOI {
   is_public?: boolean
 }
 
-export interface CreateAOIRequest {
+export type CreateAOIRequest = {
   name: string
   description?: string
   geojson: GeoJSONPolygon
@@ -106,7 +95,7 @@ export interface CreateAOIRequest {
   is_public?: boolean
 }
 
-export interface UpdateAOIRequest {
+export type UpdateAOIRequest = {
   name?: string
   description?: string
   tags?: string[]
@@ -118,7 +107,7 @@ export type AnalysisType = 'comprehensive' | 'vegetation' | 'water' | 'urban' | 
 export type AnalysisStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
 export type AlgorithmType = 'ewma' | 'cusum' | 'vedgesat' | 'spectral'
 
-export interface AnalysisRequest {
+export type AnalysisRequest = {
   aoi_id: string
   geojson?: GeoJSONPolygon
   analysis_type: AnalysisType
@@ -129,7 +118,7 @@ export interface AnalysisRequest {
   algorithms?: AlgorithmType[]
 }
 
-export interface HistoricalAnalysisRequest {
+export type HistoricalAnalysisRequest = {
   aoi_id: string
   analysis_type: AnalysisType
   months_back?: number
@@ -137,7 +126,7 @@ export interface HistoricalAnalysisRequest {
 }
 
 // Detection interface for detections array
-export interface Detection {
+export type Detection = {
   id?: string
   type: string
   confidence: number
@@ -153,7 +142,7 @@ export interface Detection {
   details?: string
 }
 
-export interface AnalysisResult {
+export type AnalysisResult = {
   id: string
   aoi_id: string
   analysis_type: AnalysisType
@@ -183,7 +172,7 @@ export interface AnalysisResult {
   completed_at?: string
 }
 
-export interface DataAvailability {
+export type DataAvailability = {
   available: boolean
   image_count: number
   date_range: {
@@ -198,7 +187,7 @@ export interface DataAvailability {
   message?: string
 }
 
-export interface DataAvailabilityResponse {
+export type DataAvailabilityResponse = {
   aoi_id: string
   availability: DataAvailability
   recommendations?: string[]
@@ -208,7 +197,7 @@ export interface DataAvailabilityResponse {
   }
 }
 
-export interface SystemCapabilities {
+export type SystemCapabilities = {
   algorithms: AlgorithmType[]
   analysis_types: AnalysisType[]
   max_aoi_size_km2: number
@@ -217,7 +206,7 @@ export interface SystemCapabilities {
   spectral_indices: string[]
 }
 
-export interface SystemStatus {
+export type SystemStatus = {
   status: 'healthy' | 'degraded' | 'down'
   services: {
     database: 'up' | 'down'
@@ -237,7 +226,7 @@ export type AlertPriority = 'low' | 'medium' | 'high' | 'critical'
 export type AlertStatus = 'active' | 'acknowledged' | 'resolved' | 'dismissed'
 export type VoteType = 'agree' | 'disagree'
 
-export interface Alert {
+export type Alert = {
   id: string
   aoi_id: string
   analysis_id: string
@@ -268,7 +257,7 @@ export interface Alert {
   resolved_at?: string
 }
 
-export interface AlertVerificationRequest {
+export type AlertVerificationRequest = {
   alert_id: string
   vote: VoteType
   comment?: string
@@ -279,7 +268,7 @@ export interface AlertVerificationRequest {
 // =============================================================================
 
 // Authentication Store
-export interface AuthState {
+export type AuthState = {
   user: User | null
   token: string | null
   isAuthenticated: boolean
@@ -287,25 +276,28 @@ export interface AuthState {
   error: string | null
 }
 
-export interface AuthActions {
+export type AuthActions = {
   login: (credentials: LoginRequest) => Promise<void>
   register: (userData: RegisterRequest) => Promise<void>
-  loginWithGoogle: (token: string) => Promise<void>
+  loginWithGoogle: (callbackUrl?: string) => Promise<void>
   logout: () => void
   setUser: (user: User | null) => void
   setToken: (token: string | null) => void
   clearError: () => void
+  initializeAuth: () => Promise<void>
+  refreshToken: () => Promise<string>
+  isTokenExpired: () => Promise<boolean>
 }
 
 // AOI Store
-export interface AOIState {
+export type AOIState = {
   aois: AOI[]
   selectedAOI: AOI | null
   isLoading: boolean
   error: string | null
 }
 
-export interface AOIActions {
+export type AOIActions = {
   fetchAOIs: () => Promise<void>
   createAOI: (aoiData: CreateAOIRequest) => Promise<AOI>
   updateAOI: (id: string, updates: UpdateAOIRequest) => Promise<AOI>
@@ -315,7 +307,7 @@ export interface AOIActions {
 }
 
 // Analysis Store
-export interface AnalysisState {
+export type AnalysisState = {
   results: Record<string, AnalysisResult>
   activeAnalyses: Record<string, AnalysisResult>
   systemStatus: SystemStatus | null
@@ -324,7 +316,7 @@ export interface AnalysisState {
   error: string | null
 }
 
-export interface AnalysisActions {
+export type AnalysisActions = {
   startAnalysis: (request: AnalysisRequest) => Promise<AnalysisResult>
   startHistoricalAnalysis: (request: HistoricalAnalysisRequest) => Promise<AnalysisResult>
   fetchAnalysisResult: (id: string) => Promise<AnalysisResult>
@@ -337,7 +329,7 @@ export interface AnalysisActions {
 }
 
 // Alert Store
-export interface AlertState {
+export type AlertState = {
   alerts: Alert[]
   unreadCount: number
   selectedAlert: Alert | null
@@ -350,7 +342,7 @@ export interface AlertState {
   error: string | null
 }
 
-export interface AlertActions {
+export type AlertActions = {
   fetchAlerts: (aoiId?: string) => Promise<void>
   fetchAlert: (id: string) => Promise<Alert>
   verifyAlert: (request: AlertVerificationRequest) => Promise<void>
@@ -368,13 +360,13 @@ export interface AlertActions {
 // =============================================================================
 
 // Common component props
-export interface BaseComponentProps {
+export type BaseComponentProps = {
   className?: string
   children?: React.ReactNode
 }
 
 // Button props
-export interface ButtonProps extends BaseComponentProps {
+export type ButtonProps = BaseComponentProps & {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost'
   size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
@@ -385,7 +377,7 @@ export interface ButtonProps extends BaseComponentProps {
 }
 
 // Input props
-export interface InputProps extends BaseComponentProps {
+export type InputProps = BaseComponentProps & {
   id?: string
   type?: 'text' | 'email' | 'password' | 'number' | 'search'
   placeholder?: string
@@ -403,7 +395,7 @@ export interface InputProps extends BaseComponentProps {
 }
 
 // Modal props
-export interface ModalProps extends BaseComponentProps {
+export type ModalProps = BaseComponentProps & {
   isOpen: boolean
   onClose: () => void
   title?: string
@@ -411,7 +403,7 @@ export interface ModalProps extends BaseComponentProps {
 }
 
 // Map props
-export interface MapProps extends BaseComponentProps {
+export type MapProps = BaseComponentProps & {
   center?: LatLng
   zoom?: number
   height?: string
@@ -425,7 +417,7 @@ export interface MapProps extends BaseComponentProps {
 }
 
 // Card props
-export interface CardProps extends BaseComponentProps {
+export type CardProps = BaseComponentProps & {
   title?: string
   description?: string
   variant?: 'default' | 'hover' | 'glass'
@@ -433,7 +425,7 @@ export interface CardProps extends BaseComponentProps {
 }
 
 // Badge props
-export interface BadgeProps extends BaseComponentProps {
+export type BadgeProps = BaseComponentProps & {
   variant?: 'success' | 'warning' | 'danger' | 'default' | 'secondary' | 'outline'
   size?: 'sm' | 'md' | 'lg'
   onClick?: () => void
@@ -444,14 +436,14 @@ export interface BadgeProps extends BaseComponentProps {
 // =============================================================================
 
 // API Response wrapper
-export interface ApiResponse<T = any> {
+export type ApiResponse<T = any> = {
   data: T
   message?: string
   success: boolean
 }
 
 // API Error response
-export interface ApiError {
+export type ApiError = {
   error: string
   message: string
   status_code: number
@@ -459,7 +451,7 @@ export interface ApiError {
 }
 
 // Pagination
-export interface PaginationMeta {
+export type PaginationMeta = {
   page: number
   per_page: number
   total: number
@@ -468,22 +460,22 @@ export interface PaginationMeta {
   has_prev: boolean
 }
 
-export interface PaginatedResponse<T> extends ApiResponse<T[]> {
+export type PaginatedResponse<T> = ApiResponse<T[]> & {
   meta: PaginationMeta
 }
 
 // Form validation
-export interface FormErrors {
+export type FormErrors = {
   [key: string]: string | undefined
 }
 
 // Loading states
-export interface LoadingState {
+export type LoadingState = {
   [key: string]: boolean
 }
 
 // Notification
-export interface Notification {
+export type Notification = {
   id: string
   type: 'success' | 'error' | 'warning' | 'info'
   title: string
@@ -494,7 +486,7 @@ export interface Notification {
 }
 
 // Theme
-export interface Theme {
+export type Theme = {
   mode: 'light' | 'dark'
   colors: Record<string, string>
   fonts: Record<string, string>
@@ -504,7 +496,7 @@ export interface Theme {
 // Global Application State
 // =============================================================================
 
-export interface AppState {
+export type AppState = {
   auth: AuthState
   aoi: AOIState
   analysis: AnalysisState
@@ -518,17 +510,17 @@ export interface AppState {
 // Event Types
 // =============================================================================
 
-export interface MapClickEvent {
+export type MapClickEvent = {
   latlng: LatLng
   originalEvent: MouseEvent
 }
 
-export interface DrawingEvent {
+export type DrawingEvent = {
   polygon: GeoJSONPolygon
   area: number
 }
 
-export interface AnalysisProgressEvent {
+export type AnalysisProgressEvent = {
   analysisId: string
   progress: number
   status: AnalysisStatus
@@ -539,14 +531,14 @@ export interface AnalysisProgressEvent {
 // Hooks Return Types
 // =============================================================================
 
-export interface UseApiReturn<T> {
+export type UseApiReturn<T> = {
   data: T | null
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
 }
 
-export interface UseFormReturn<T> {
+export type UseFormReturn<T> = {
   values: T
   errors: FormErrors
   isValid: boolean

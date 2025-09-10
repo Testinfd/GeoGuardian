@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useIsAuthenticated } from '@/stores/auth'
 import { 
   ArrowLeft, 
   Save, 
@@ -60,8 +60,14 @@ function AOICreationStep({ step, title, description, isActive, isCompleted }: AO
 
 export default function CreateAOIPage() {
   const router = useRouter()
-  const { data: session } = useSession()
-  
+  const isAuthenticated = useIsAuthenticated()
+  const [isClient, setIsClient] = useState(false)
+
+  // Mark when we're on the client side
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
   // Store state
   const { createAOI, isLoading, error } = useAOIStore()
 
@@ -171,8 +177,8 @@ export default function CreateAOIPage() {
     }
   }
 
-  // Redirect if not authenticated
-  if (!session) {
+  // Redirect if not authenticated - only on client side
+  if (isClient && !isAuthenticated) {
     router.push('/auth/login')
     return null
   }

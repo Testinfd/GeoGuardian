@@ -10,11 +10,19 @@ import type {
   AuthState, 
   AuthActions, 
   User, 
-  LoginRequest, 
-  RegisterRequest,
-  AuthResponse 
+  LoginRequest,
+  RegisterRequest
 } from '@/types'
-import { authAPI } from '@/services/api'
+import {
+  supabase,
+  getCurrentUser,
+  getCurrentSession,
+  getAuthToken,
+  isAuthenticated,
+  signInWithGoogle,
+  signOut,
+  createDatabaseUser
+} from '@/lib/supabase-auth'
 
 interface AuthStore extends AuthState, AuthActions {}
 
@@ -33,32 +41,53 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true, error: null })
         
         try {
-          const response = await authAPI.login(credentials)
-          const { access_token, id, email, name } = response.data
-
-          // Create user object from response data
-          const user = {
-            id,
-            email,
-            full_name: name,
-            avatar_url: undefined,
-            created_at: new Date().toISOString(),
+          // Use Supabase auth directly for email/password login
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: credentials.email,
+            password: credentials.password
+          })
+          
+          if (error) {
+            throw error
+          }
+          
+          // Create user object from Supabase user
+          const userData = {
+            id: data.user.id,
+            email: data.user.email || '',
+            full_name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+            avatar_url: data.user.user_metadata?.avatar_url || undefined,
+            created_at: data.user.created_at,
             updated_at: new Date().toISOString()
           }
-
+          
+          // Create user in database if needed
+          const { error: dbError } = await supabase
+            .from('users')
+            .upsert({
+              id: data.user.id,
+              email: data.user.email || '',
+              name: data.user.user_metadata?.name || data.user.email?.split('@')[0],
+              avatar_url: data.user.user_metadata?.avatar_url || undefined,
+              updated_at: new Date().toISOString()
+            })
+          
           set({
-            user,
-            token: access_token,
+            user: userData,
+            token: data.session?.access_token,
             isAuthenticated: true,
             isLoading: false,
             error: null,
           })
           
           // Store token in localStorage for persistence
-          localStorage.setItem('auth_token', access_token)
+          const token = data.session?.access_token
+          if (token) {
+            localStorage.setItem('auth_token', token)
+          }
           
         } catch (error: any) {
-          const errorMessage = error.response?.data?.message || 'Login failed'
+          const errorMessage = error.message || 'Login failed'
           set({
             user: null,
             token: null,
@@ -74,31 +103,58 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true, error: null })
         
         try {
-          const response = await authAPI.register(userData)
-          const { access_token, id, email, name } = response.data
-
-          // Create user object from response data
-          const user = {
-            id,
-            email,
-            full_name: name,
-            avatar_url: undefined,
-            created_at: new Date().toISOString(),
+          // Create user with Supabase auth
+          const { data, error } = await supabase.auth.signUp({
+            email: userData.email,
+            password: userData.password,
+            options: {
+              data: {
+                name: userData.full_name || userData.email.split('@')[0]
+              }
+            }
+          })
+          
+          if (error || !data.user) {
+            throw error || new Error('Registration failed')
+          }
+          
+          // Create user object from Supabase user
+          const userDataObject = {
+            id: data.user.id,
+            email: data.user.email || '',
+            full_name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+            avatar_url: data.user.user_metadata?.avatar_url || undefined,
+            created_at: data.user.created_at,
             updated_at: new Date().toISOString()
           }
-
+          
+          // Create user in database if needed
+          const { error: dbError } = await supabase
+            .from('users')
+            .upsert({
+              id: data.user.id,
+              email: data.user.email || '',
+              name: data.user.user_metadata?.name || data.user.email?.split('@')[0],
+              avatar_url: data.user.user_metadata?.avatar_url || undefined,
+              updated_at: new Date().toISOString()
+            })
+          
           set({
-            user,
-            token: access_token,
+            user: userDataObject,
+            token: data.session?.access_token,
             isAuthenticated: true,
             isLoading: false,
             error: null,
           })
           
-          localStorage.setItem('auth_token', access_token)
+          // Store token in localStorage for persistence
+          const token = data.session?.access_token
+          if (token) {
+            localStorage.setItem('auth_token', token)
+          }
           
         } catch (error: any) {
-          const errorMessage = error.response?.data?.message || 'Registration failed'
+          const errorMessage = error.message || 'Registration failed'
           set({
             user: null,
             token: null,
@@ -110,35 +166,55 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      loginWithGoogle: async (token: string) => {
+      loginWithGoogle: async (callbackUrl: string = '/dashboard') => {
         set({ isLoading: true, error: null })
         
         try {
-          const response = await authAPI.googleAuth(token)
-          const { access_token, id, email, name } = response.data
-
-          // Create user object from response data
-          const user = {
-            id,
-            email,
-            full_name: name,
-            avatar_url: undefined,
-            created_at: new Date().toISOString(),
+          // Sign in with Google via Supabase
+          await signInWithGoogle(callbackUrl)
+          
+          // Get current user and session
+          const user = await getCurrentUser()
+          const token = await getAuthToken()
+          
+          if (!user || !token) {
+            throw new Error('Failed to get user data after Google login')
+          }
+          
+          // Create user object from Supabase data
+          const userData = {
+            id: user.id,
+            email: user.email || '',
+            full_name: user.user_metadata?.name || user.email?.split('@')[0],
+            avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || undefined,
+            created_at: user.created_at,
             updated_at: new Date().toISOString()
           }
-
+          
+          // Create user in database if needed
+          const { error: dbError } = await supabase
+            .from('users')
+            .upsert({
+              id: user.id,
+              email: user.email || '',
+              name: user.user_metadata?.name || user.email?.split('@')[0],
+              avatar_url: user.user_metadata?.avatar_url || undefined,
+              updated_at: new Date().toISOString()
+            })
+          
           set({
-            user,
-            token: access_token,
+            user: userData,
+            token: token,
             isAuthenticated: true,
             isLoading: false,
             error: null,
           })
           
-          localStorage.setItem('auth_token', access_token)
+          // Store token in localStorage for persistence
+          localStorage.setItem('auth_token', token)
           
         } catch (error: any) {
-          const errorMessage = error.response?.data?.message || 'Google login failed'
+          const errorMessage = error.message || 'Google login failed'
           set({
             user: null,
             token: null,
@@ -191,28 +267,40 @@ export const useAuthStore = create<AuthStore>()(
         set({ error: null })
       },
 
-      // Auto-login on app start if token exists
+      // Auto-login on app start using Supabase session
       initializeAuth: async () => {
-        const storedToken = localStorage.getItem('auth_token')
-        
-        if (storedToken) {
-          set({ isLoading: true })
+        set({ isLoading: true, error: null })
+
+        try {
+          // Get current session directly to avoid circular import
+          const { data, error } = await supabase.auth.getSession()
           
-          try {
-            // Verify token with backend
-            const response = await authAPI.getCurrentUser()
-            const user = response.data
+          if (error) {
+            throw error
+          }
+          
+          if (data.session) {
+            const user = data.session.user
+            const userData = {
+              id: user.id,
+              email: user.email || '',
+              full_name: user.user_metadata?.name || user.email?.split('@')[0],
+              avatar_url: user.user_metadata?.avatar_url || undefined,
+              provider: (user.app_metadata?.provider === 'google' ? 'google' : 'email') as 'email' | 'google',
+              created_at: user.created_at,
+              updated_at: new Date().toISOString()
+            }
+            
+            localStorage.setItem('auth_token', data.session.access_token)
             
             set({
-              user,
-              token: storedToken,
+              user: userData,
+              token: data.session.access_token,
               isAuthenticated: true,
               isLoading: false,
               error: null,
             })
-          } catch (error) {
-            // Token is invalid, clear it
-            localStorage.removeItem('auth_token')
+          } else {
             set({
               user: null,
               token: null,
@@ -220,42 +308,65 @@ export const useAuthStore = create<AuthStore>()(
               isLoading: false,
               error: null,
             })
+            
+            localStorage.removeItem('auth_token')
           }
+
+        } catch (error: any) {
+          console.error('Auth initialization error:', error)
+
+          set({
+            user: null,
+            token: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: error.message || 'Authentication initialization failed',
+          })
+
+          localStorage.removeItem('auth_token')
         }
       },
 
       // Refresh token if needed
       refreshToken: async () => {
-        const { token } = get()
-        
-        if (!token) {
-          throw new Error('No token to refresh')
-        }
-        
         try {
-          const response = await authAPI.refreshToken()
-          const { access_token, id, email, name } = response.data
-
-          // Create user object from response data
-          const user = {
-            id,
-            email,
-            full_name: name,
-            avatar_url: undefined,
-            created_at: new Date().toISOString(),
+          // Refresh Supabase session
+          const { data, error } = await supabase.auth.refreshSession()
+          
+          if (error) {
+            throw error
+          }
+          
+          const { session } = data
+          
+          if (!session) {
+            throw new Error('No session found after refresh')
+          }
+          
+          // Get current user
+          const user = await getCurrentUser()
+          
+          // Create user object from Supabase data
+          const userData = {
+            id: user.id,
+            email: user.email || '',
+            full_name: user.user_metadata?.name || user.email?.split('@')[0],
+            avatar_url: user.user_metadata?.avatar_url || undefined,
+            created_at: user.created_at,
             updated_at: new Date().toISOString()
           }
-
+          
           set({
-            user,
-            token: access_token,
+            user: userData,
+            token: session.access_token,
             isAuthenticated: true,
             error: null,
           })
           
-          localStorage.setItem('auth_token', access_token)
+          // Store token in localStorage for persistence
+          localStorage.setItem('auth_token', session.access_token)
           
-          return access_token
+          return session.access_token
         } catch (error) {
           // Refresh failed, logout user
           get().logout()
@@ -264,17 +375,22 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       // Check if token is expired
-      isTokenExpired: (): boolean => {
+      isTokenExpired: async (): Promise<boolean> => {
         const { token } = get()
         
         if (!token) return true
         
         try {
-          // Decode JWT token to check expiration
-          const payload = JSON.parse(atob(token.split('.')[1]))
-          const currentTime = Date.now() / 1000
+          // Get current session from Supabase
+          const session = await getCurrentSession()
           
-          return payload.exp < currentTime
+          if (!session) {
+            return true
+          }
+          
+          // Check if session is expired
+          const currentTime = Math.floor(Date.now() / 1000)
+          return session.expires_at < currentTime
         } catch (error) {
           return true
         }
@@ -292,13 +408,6 @@ export const useAuthStore = create<AuthStore>()(
     }
   )
 )
-
-// Add the new methods to the interface
-interface AuthStore extends AuthState, AuthActions {
-  initializeAuth: () => Promise<void>
-  refreshToken: () => Promise<string>
-  isTokenExpired: () => boolean
-}
 
 // Helper hooks for common authentication checks
 export const useUser = () => useAuthStore((state) => state.user)

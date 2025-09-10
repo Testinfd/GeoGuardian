@@ -1,15 +1,13 @@
 /**
  * AOI Polygon Component
- * Displays and manages AOI polygons on the map with interactive features
+ * Displays and manages AOI polygons on Sentinel satellite imagery with interactive features
  */
 
 'use client'
 
 import React, { useEffect, useState, useCallback } from 'react'
-import { Polygon, Popup, Tooltip, useMap } from 'react-leaflet'
-import L from 'leaflet'
-import { 
-  MapPin, Calendar, BarChart3, AlertTriangle, 
+import {
+  MapPin, Calendar, BarChart3, AlertTriangle,
   Eye, Edit3, Trash2, Play, ExternalLink,
   Check, X, Clock, Activity
 } from 'lucide-react'
@@ -30,6 +28,10 @@ interface AOIPolygonProps {
   onAnalyze?: (aoi: AOI) => void
   onViewDetails?: (aoi: AOI) => void
   className?: string
+  // Sentinel-specific props
+  mapBounds?: { north: number; south: number; east: number; west: number }
+  mapWidth?: number
+  mapHeight?: number
 }
 
 const AOIPolygon: React.FC<AOIPolygonProps> = ({
@@ -45,51 +47,85 @@ const AOIPolygon: React.FC<AOIPolygonProps> = ({
   onDelete,
   onAnalyze,
   onViewDetails,
-  className = ''
+  className = '',
+  mapBounds,
+  mapWidth = 800,
+  mapHeight = 600
 }) => {
-  const map = useMap()
-  const [polygonRef, setPolygonRef] = useState<L.Polygon | null>(null)
   const [area, setArea] = useState<number>(0)
   const [isHovered, setIsHovered] = useState(false)
+  const [showDetails, setShowDetails] = useState(false)
 
-  // Convert GeoJSON coordinates to Leaflet format
-  const getLatLngs = useCallback((geojson: GeoJSONPolygon): [number, number][] => {
+  // Convert GeoJSON coordinates to screen coordinates for Sentinel overlay
+  const getScreenCoordinates = useCallback((geojson: GeoJSONPolygon): [number, number][] => {
+    if (!mapBounds) return []
+
     try {
-      return geojson.coordinates[0].map(coord => [coord[1], coord[0]] as [number, number])
+      const coords = geojson.coordinates[0]
+      const bounds = mapBounds
+      const width = mapWidth
+      const height = mapHeight
+
+      return coords.map(coord => {
+        const [lng, lat] = coord
+        const x = ((lng - bounds.west) / (bounds.east - bounds.west)) * width
+        const y = ((bounds.north - lat) / (bounds.north - bounds.south)) * height
+        return [x, y] as [number, number]
+      })
     } catch (error) {
       console.error('Error converting coordinates:', error)
       return []
     }
-  }, [])
+  }, [mapBounds, mapWidth, mapHeight])
 
-  // Calculate polygon area
-  const calculateArea = useCallback((latlngs: [number, number][]): number => {
-    if (!latlngs.length || !L.GeometryUtil?.geodesicArea) return 0
-    
+  // Calculate polygon area using geodesic calculation
+  const calculateArea = useCallback((coordinates: [number, number][]): number => {
+    if (!coordinates || coordinates.length < 3) return 0
+
     try {
-      return L.GeometryUtil.geodesicArea(latlngs as any)
+      // Simple polygon area calculation using shoelace formula
+      // For more accurate geodesic calculation, would need a dedicated library
+      let area = 0
+      for (let i = 0; i < coordinates.length; i++) {
+        const j = (i + 1) % coordinates.length
+        area += coordinates[i][0] * coordinates[j][1]
+        area -= coordinates[j][0] * coordinates[i][1]
+      }
+      area = Math.abs(area) / 2
+
+      // Convert to square meters (rough approximation)
+      // This is a simplified calculation - in production you'd use a proper geospatial library
+      const bounds = mapBounds!
+      const latRange = Math.abs(bounds.north - bounds.south) || 1
+      const lngRange = Math.abs(bounds.east - bounds.west) || 1
+
+      const metersPerPixelLat = (latRange * 111000) / mapHeight // Rough conversion
+      const metersPerPixelLng = (lngRange * 111000 * Math.cos(bounds.north * Math.PI / 180)) / mapWidth
+
+      const avgMetersPerPixel = (metersPerPixelLat + metersPerPixelLng) / 2
+      return area * avgMetersPerPixel * avgMetersPerPixel
     } catch (error) {
       console.error('Error calculating area:', error)
       return 0
     }
-  }, [])
+  }, [mapBounds, mapWidth, mapHeight])
 
-  // Get polygon style based on state
+  // Get polygon style based on state for SVG rendering
   const getPolygonStyle = useCallback(() => {
     const baseStyle = {
-      weight: 2,
-      opacity: 0.8,
+      strokeWidth: 2,
+      strokeOpacity: 0.8,
       fillOpacity: 0.2,
-      lineCap: 'round' as const,
-      lineJoin: 'round' as const
+      strokeLinecap: 'round' as const,
+      strokeLinejoin: 'round' as const
     }
 
     if (isSelected) {
       return {
         ...baseStyle,
-        color: '#3b82f6',
-        fillColor: '#3b82f6',
-        weight: 3,
+        stroke: '#3b82f6',
+        fill: '#3b82f6',
+        strokeWidth: 3,
         fillOpacity: 0.3
       }
     }
@@ -97,9 +133,9 @@ const AOIPolygon: React.FC<AOIPolygonProps> = ({
     if (isHighlighted || isHovered) {
       return {
         ...baseStyle,
-        color: '#10b981',
-        fillColor: '#10b981',
-        weight: 3,
+        stroke: '#10b981',
+        fill: '#10b981',
+        strokeWidth: 3,
         fillOpacity: 0.25
       }
     }
@@ -110,34 +146,34 @@ const AOIPolygon: React.FC<AOIPolygonProps> = ({
         case 'completed':
           return {
             ...baseStyle,
-            color: recentAnalysis.results?.change_detected ? '#ef4444' : '#10b981',
-            fillColor: recentAnalysis.results?.change_detected ? '#ef4444' : '#10b981'
+            stroke: recentAnalysis.results?.change_detected ? '#ef4444' : '#10b981',
+            fill: recentAnalysis.results?.change_detected ? '#ef4444' : '#10b981'
           }
         case 'running':
           return {
             ...baseStyle,
-            color: '#f59e0b',
-            fillColor: '#f59e0b'
+            stroke: '#f59e0b',
+            fill: '#f59e0b'
           }
         case 'failed':
           return {
             ...baseStyle,
-            color: '#6b7280',
-            fillColor: '#6b7280'
+            stroke: '#6b7280',
+            fill: '#6b7280'
           }
         default:
           return {
             ...baseStyle,
-            color: '#8b5cf6',
-            fillColor: '#8b5cf6'
+            stroke: '#8b5cf6',
+            fill: '#8b5cf6'
           }
       }
     }
 
     return {
       ...baseStyle,
-      color: '#8b5cf6',
-      fillColor: '#8b5cf6'
+      stroke: '#8b5cf6',
+      fill: '#8b5cf6'
     }
   }, [isSelected, isHighlighted, isHovered, recentAnalysis])
 
@@ -179,14 +215,12 @@ const AOIPolygon: React.FC<AOIPolygonProps> = ({
     return statusConfig[recentAnalysis.status]
   }
 
-  // Calculate area when polygon loads
+  // Calculate area when component mounts or AOI changes
   useEffect(() => {
-    if (polygonRef) {
-      const latlngs = getLatLngs(aoi.geojson)
-      const calculatedArea = calculateArea(latlngs)
-      setArea(calculatedArea)
-    }
-  }, [polygonRef, aoi.geojson, getLatLngs, calculateArea])
+    const coords = getScreenCoordinates(aoi.geojson)
+    const calculatedArea = calculateArea(coords)
+    setArea(calculatedArea)
+  }, [aoi.geojson, getScreenCoordinates, calculateArea])
 
   // Event handlers
   const handleClick = () => {
@@ -203,28 +237,63 @@ const AOIPolygon: React.FC<AOIPolygonProps> = ({
     setIsHovered(false)
   }
 
-  const latlngs = getLatLngs(aoi.geojson)
+  const screenCoords = getScreenCoordinates(aoi.geojson)
   const statusInfo = getAnalysisStatusInfo()
+  const polygonStyle = getPolygonStyle()
 
-  if (!latlngs.length) {
+  if (!screenCoords.length || !mapBounds) {
     return null
   }
 
+  // Create SVG path from coordinates
+  const pathData = screenCoords.reduce((path, [x, y], index) => {
+    return path + (index === 0 ? `M ${x} ${y}` : `L ${x} ${y}`) + (index === screenCoords.length - 1 ? ' Z' : '')
+  }, '')
+
   return (
-    <Polygon
-      ref={setPolygonRef}
-      positions={latlngs}
-      pathOptions={getPolygonStyle()}
-      eventHandlers={{
-        click: handleClick,
-        mouseover: handleMouseOver,
-        mouseout: handleMouseOut
-      }}
-      className={className}
-    >
-      {/* Tooltip */}
-      {showTooltip && (
-        <Tooltip direction="top" offset={[0, -10]} opacity={1}>
+    <div className={`absolute inset-0 pointer-events-none ${className}`}>
+      {/* SVG Overlay for Polygon */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-auto"
+        style={{ width: mapWidth, height: mapHeight }}
+      >
+        <defs>
+          <filter id={`glow-${aoi.id}`} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+
+        <path
+          d={pathData}
+          stroke={polygonStyle.stroke}
+          strokeWidth={polygonStyle.strokeWidth}
+          strokeOpacity={polygonStyle.strokeOpacity}
+          fill={polygonStyle.fill}
+          fillOpacity={polygonStyle.fillOpacity}
+          strokeLinecap={polygonStyle.strokeLinecap}
+          strokeLinejoin={polygonStyle.strokeLinejoin}
+          filter={isSelected ? `url(#glow-${aoi.id})` : undefined}
+          onClick={handleClick}
+          onMouseEnter={handleMouseOver}
+          onMouseLeave={handleMouseOut}
+          style={{ cursor: interactive ? 'pointer' : 'default' }}
+        />
+      </svg>
+
+      {/* Tooltip Overlay */}
+      {showTooltip && isHovered && (
+        <div
+          className="absolute z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-2 pointer-events-auto"
+          style={{
+            left: screenCoords[0]?.[0] || 0,
+            top: (screenCoords[0]?.[1] || 0) - 60,
+            transform: 'translateX(-50%)'
+          }}
+        >
           <div className="text-sm">
             <div className="font-semibold">{aoi.name}</div>
             <div className="text-gray-600">{formatArea(area)}</div>
@@ -235,139 +304,156 @@ const AOIPolygon: React.FC<AOIPolygonProps> = ({
               </div>
             )}
           </div>
-        </Tooltip>
+        </div>
       )}
 
-      {/* Detailed Popup */}
-      {showPopup && (
-        <Popup maxWidth={400} minWidth={300} closeButton={true}>
-          <div className="p-1">
-            {/* Header */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <h3 className="font-bold text-gray-900 text-lg">{aoi.name}</h3>
-                {aoi.description && (
-                  <p className="text-sm text-gray-600 mt-1">{aoi.description}</p>
-                )}
-              </div>
-              {aoi.is_public && (
-                <Badge variant="default" size="sm">
-                  Public
-                </Badge>
-              )}
-            </div>
-
-            {/* Area Info */}
-            <div className="grid grid-cols-2 gap-4 mb-3 p-2 bg-gray-50 rounded">
-              <div className="text-center">
-                <div className="text-lg font-semibold text-gray-900">{formatArea(area)}</div>
-                <div className="text-xs text-gray-500">Area</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-semibold text-gray-900">
-                  {aoi.analysis_count || 0}
-                </div>
-                <div className="text-xs text-gray-500">Analyses</div>
-              </div>
-            </div>
-
-            {/* Recent Analysis Status */}
-            {recentAnalysis && statusInfo && (
-              <div className="mb-3 p-2 border rounded">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Latest Analysis</span>
-                  <div className={`flex items-center px-2 py-1 rounded-full text-xs ${statusInfo.bg} ${statusInfo.color}`}>
-                    <statusInfo.icon className="w-3 h-3 mr-1" />
-                    {statusInfo.text}
-                  </div>
-                </div>
-                
-                <div className="text-xs text-gray-600">
-                  <div>Type: {recentAnalysis.analysis_type.replace('_', ' ')}</div>
-                  <div>Started: {formatDate(recentAnalysis.created_at)}</div>
-                  {recentAnalysis.results?.confidence_score && (
-                    <div>Confidence: {Math.round(recentAnalysis.results.confidence_score * 100)}%</div>
+      {/* Detailed Modal/Popup */}
+      {showPopup && showDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 pointer-events-auto">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              {/* Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <h3 className="font-bold text-gray-900 text-xl">{aoi.name}</h3>
+                  {aoi.description && (
+                    <p className="text-sm text-gray-600 mt-1">{aoi.description}</p>
                   )}
                 </div>
-
-                {recentAnalysis.status === 'running' && recentAnalysis.progress !== undefined && (
-                  <div className="mt-2">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span>Progress</span>
-                      <span>{recentAnalysis.progress}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${recentAnalysis.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
+                <button
+                  onClick={() => setShowDetails(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-            )}
 
-            {/* Tags */}
-            {aoi.tags && aoi.tags.length > 0 && (
-              <div className="mb-3">
-                <div className="text-sm font-medium text-gray-700 mb-1">Tags</div>
-                <div className="flex flex-wrap gap-1">
-                  {aoi.tags.map((tag, index) => (
-                    <Badge key={index} variant="default" size="sm">
-                      {tag}
-                    </Badge>
-                  ))}
+              {/* Area Info */}
+              <div className="grid grid-cols-2 gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-gray-900">{formatArea(area)}</div>
+                  <div className="text-xs text-gray-500">Area</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-gray-900">
+                    {aoi.analysis_count || 0}
+                  </div>
+                  <div className="text-xs text-gray-500">Analyses</div>
                 </div>
               </div>
-            )}
 
-            {/* Creation Date */}
-            <div className="text-xs text-gray-500 mb-3 flex items-center">
-              <Calendar className="w-3 h-3 mr-1" />
-              Created {formatDate(aoi.created_at)}
-            </div>
+              {/* Recent Analysis Status */}
+              {recentAnalysis && statusInfo && (
+                <div className="mb-4 p-3 border rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Latest Analysis</span>
+                    <div className={`flex items-center px-2 py-1 rounded-full text-xs ${statusInfo.bg} ${statusInfo.color}`}>
+                      <statusInfo.icon className="w-3 h-3 mr-1" />
+                      {statusInfo.text}
+                    </div>
+                  </div>
 
-            {/* Action Buttons */}
-            {interactive && (
-              <div className="flex flex-wrap gap-2">
-                {onViewDetails && (
-                  <Button variant="primary" size="sm" onClick={() => onViewDetails(aoi)}>
-                    <Eye className="w-3 h-3 mr-1" />
-                    Details
-                  </Button>
-                )}
+                  <div className="text-xs text-gray-600">
+                    <div>Type: {recentAnalysis.analysis_type.replace('_', ' ')}</div>
+                    <div>Started: {formatDate(recentAnalysis.created_at)}</div>
+                    {recentAnalysis.results?.confidence_score && (
+                      <div>Confidence: {Math.round(recentAnalysis.results.confidence_score * 100)}%</div>
+                    )}
+                  </div>
 
-                {onAnalyze && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => onAnalyze(aoi)}
-                    disabled={recentAnalysis?.status === 'running'}
-                  >
-                    <Play className="w-3 h-3 mr-1" />
-                    Analyze
-                  </Button>
-                )}
+                  {recentAnalysis.status === 'running' && recentAnalysis.progress !== undefined && (
+                    <div className="mt-2">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>Progress</span>
+                        <span>{recentAnalysis.progress}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${recentAnalysis.progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
-                {onEdit && (
-                  <Button variant="ghost" size="sm" onClick={() => onEdit(aoi)}>
-                    <Edit3 className="w-3 h-3 mr-1" />
-                    Edit
-                  </Button>
-                )}
+              {/* Tags */}
+              {aoi.tags && aoi.tags.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-sm font-medium text-gray-700 mb-2">Tags</div>
+                  <div className="flex flex-wrap gap-1">
+                    {aoi.tags.map((tag, index) => (
+                      <Badge key={index} variant="default" size="sm">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-                {onDelete && (
-                  <Button variant="ghost" size="sm" onClick={() => onDelete(aoi)}>
-                    <Trash2 className="w-3 h-3 mr-1 text-red-500" />
-                    Delete
-                  </Button>
-                )}
+              {/* Creation Date */}
+              <div className="text-xs text-gray-500 mb-4 flex items-center">
+                <Calendar className="w-3 h-3 mr-1" />
+                Created {formatDate(aoi.created_at)}
               </div>
-            )}
+
+              {/* Action Buttons */}
+              {interactive && (
+                <div className="flex flex-wrap gap-2">
+                  {onViewDetails && (
+                    <Button variant="primary" size="sm" onClick={() => onViewDetails(aoi)}>
+                      <Eye className="w-3 h-3 mr-1" />
+                      Details
+                    </Button>
+                  )}
+
+                  {onAnalyze && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onAnalyze(aoi)}
+                      disabled={recentAnalysis?.status === 'running'}
+                    >
+                      <Play className="w-3 h-3 mr-1" />
+                      Analyze
+                    </Button>
+                  )}
+
+                  {onEdit && (
+                    <Button variant="ghost" size="sm" onClick={() => onEdit(aoi)}>
+                      <Edit3 className="w-3 h-3 mr-1" />
+                      Edit
+                    </Button>
+                  )}
+
+                  {onDelete && (
+                    <Button variant="ghost" size="sm" onClick={() => onDelete(aoi)}>
+                      <Trash2 className="w-3 h-3 mr-1 text-red-500" />
+                      Delete
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </Popup>
+        </div>
       )}
-    </Polygon>
+
+      {/* Click handler for showing details */}
+      <div
+        className="absolute inset-0 cursor-pointer"
+        onClick={() => {
+          if (interactive) {
+            if (onSelect) onSelect(aoi)
+            if (showPopup) setShowDetails(true)
+          }
+        }}
+        style={{
+          clipPath: `polygon(${screenCoords.map(([x, y]) => `${x}px ${y}px`).join(', ')})`
+        }}
+      />
+    </div>
   )
 }
 

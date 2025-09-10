@@ -7,7 +7,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useIsAuthenticated, useUser } from '@/stores/auth'
 import { ArrowLeft, Play, AlertCircle, Info } from 'lucide-react'
 import { Navigation } from '@/components/layout'
 import { Button, Card, Loading, Alert } from '@/components/ui'
@@ -20,8 +20,15 @@ import type { AOI, AnalysisType } from '@/types'
 export default function NewAnalysisPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { data: session } = useSession()
-  
+  const isAuthenticated = useIsAuthenticated()
+  const user = useUser()
+  const [isClient, setIsClient] = useState(false)
+
+  // Mark when we're on the client side
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
   // URL params
   const preselectedAOIId = searchParams.get('aoi')
   
@@ -47,10 +54,10 @@ export default function NewAnalysisPage() {
   const [startedAnalysisId, setStartedAnalysisId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (session) {
+    if (isAuthenticated) {
       fetchAOIs()
       fetchSystemStatus()
-      
+
       // Preselect AOI if specified in URL
       if (preselectedAOIId && aois.length > 0) {
         const aoi = aois.find(a => a.id === preselectedAOIId)
@@ -59,7 +66,7 @@ export default function NewAnalysisPage() {
         }
       }
     }
-  }, [session, fetchAOIs, fetchSystemStatus, preselectedAOIId, aois])
+  }, [isAuthenticated, fetchAOIs, fetchSystemStatus, preselectedAOIId, aois])
 
   const handleAnalysisStart = async (type: AnalysisType, aoiId: string) => {
     try {
@@ -88,8 +95,8 @@ export default function NewAnalysisPage() {
     selectAOI(aoi)
   }
 
-  // Redirect if not authenticated
-  if (!session) {
+  // Redirect if not authenticated - only on client side
+  if (isClient && !isAuthenticated) {
     router.push('/auth/login')
     return null
   }

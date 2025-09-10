@@ -5,15 +5,16 @@
 
 'use client'
 
-import React, { useEffect } from 'react'
+import { useIsAuthenticated, useUser } from '@/stores/auth'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
 import { Navigation } from '@/components/layout'
 import { Button, Card, Loading, Alert } from '@/components/ui'
 import { SystemStatus, AnalysisSelector } from '@/components/analysis'
 import { useAOIStore } from '@/stores/aoi'
 import { useAnalysisStore } from '@/stores/analysis'
 import { useAlertStore } from '@/stores/alerts'
+import { analysisAPI, aoiAPI, alertsAPI } from '@/services/api'
 import { 
   BarChart3, 
   Map, 
@@ -26,68 +27,127 @@ import {
   CheckCircle,
   Settings
 } from 'lucide-react'
+import type { AOI, AnalysisResult, Alert as AlertType, SystemStatus as SystemStatusType } from '@/types'
 
-export default function Dashboard() {
+export default function DashboardPage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const isAuthenticated = useIsAuthenticated()
+  const user = useUser()
+  const [isClient, setIsClient] = useState(false)
+
+  // Mark when we're on the client side
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  // State for dashboard data
+  const [aoiStats, setAoiStats] = useState({ total: 0, withAnalysis: 0 })
+  const [analysisStats, setAnalysisStats] = useState({ total: 0, running: 0 })
+  const [alertStats, setAlertStats] = useState({ byStatus: { active: 0 } })
+  const [recentAlerts, setRecentAlerts] = useState<AlertType[]>([])
+  const [activeAnalyses, setActiveAnalyses] = useState<AnalysisResult[]>([])
+  const [systemStatus, setSystemStatus] = useState<SystemStatusType>({
+    status: 'down',
+    services: {
+      database: 'down',
+      sentinel_hub: 'down', 
+      analysis_engine: 'down',
+      email_service: 'down'
+    },
+    queue_size: 0,
+    active_analyses: 0,
+    last_check: new Date().toISOString(),
+    version: '1.0.0',
+    uptime: 0
+  })
+  const [aois, setAois] = useState<AOI[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   
-  // Store state
-  const { 
-    aois, 
-    fetchAOIs, 
-    isLoading: aoiLoading, 
-    getAOIStats 
-  } = useAOIStore()
-  
-  const { 
-    getActiveAnalyses,
-    getAnalysisStats,
-    fetchSystemStatus,
-    systemStatus
-  } = useAnalysisStore()
-  
-  const { 
-    alerts,
-    fetchAlerts,
-    getAlertStats,
-    getRecentAlerts
-  } = useAlertStore()
+  // Fetch dashboard data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!isAuthenticated) return
+      
+      try {
+        setIsLoading(true)
+        
+        // Fetch data in parallel
+        const [aoiResponse, analysisResponse, alertResponse, statusResponse] = await Promise.allSettled([
+          aoiAPI.getAll(),
+          analysisAPI.getResults(),
+          alertsAPI.getAll(),
+          analysisAPI.getSystemStatus()
+        ])
+        
+        // Process AOI data
+        if (aoiResponse.status === 'fulfilled') {
+          const aoiData = aoiResponse.value.data
+          setAois(aoiData)
+          setAoiStats({
+            total: aoiData.length,
+            withAnalysis: aoiData.filter((aoi: any) => aoi.analysis_count > 0).length
+          })
+        }
+        
+        // Process analysis data
+        if (analysisResponse.status === 'fulfilled') {
+          const analysisData = analysisResponse.value.data
+          setActiveAnalyses(analysisData)
+          setAnalysisStats({
+            total: analysisData.length,
+            running: analysisData.filter((analysis: any) => analysis.status === 'running').length
+          })
+        }
+        
+        // Process alerts data
+        if (alertResponse.status === 'fulfilled') {
+          const alertData = alertResponse.value.data
+          setRecentAlerts(alertData)
+          setAlertStats({
+            byStatus: {
+              active: alertData.filter((alert: any) => alert.status === 'active').length
+            }
+          })
+        }
+        
+        // Process system status
+        if (statusResponse.status === 'fulfilled') {
+          setSystemStatus(statusResponse.value.data || systemStatus)
+        }
+        
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    fetchDashboardData()
+  }, [isAuthenticated])
   
   useEffect(() => {
-    if (session?.user && session?.accessToken) {
-      console.log('Dashboard: Session found, fetching data...', { user: session.user.email, hasToken: !!session.accessToken })
-      fetchAOIs()
-      fetchAlerts()
-      fetchSystemStatus()
-    } else {
-      console.log('Dashboard: No valid session, skipping data fetch', { session: !!session, user: !!session?.user, token: !!session?.accessToken })
+    if (isClient && !isAuthenticated) {
+      router.push('/auth/login')
     }
-  }, [session, fetchAOIs, fetchAlerts, fetchSystemStatus])
+  }, [isAuthenticated, router, isClient])
+
+  if (isClient && !isAuthenticated) {
+    return null
+  }
   
-  if (status === 'loading') {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navigation />
-        <div className="flex items-center justify-center py-12">
+      <div className="container mx-auto py-8">
+        <div className="flex items-center justify-center min-h-[400px]">
           <Loading />
         </div>
       </div>
     )
   }
   
-  if (!session) {
-    router.push('/auth/login')
-    return null
-  }
-  
-  const aoiStats = getAOIStats()
-  const analysisStats = getAnalysisStats()
-  const alertStats = getAlertStats()
-  const activeAnalyses = getActiveAnalyses()
-  const recentAlerts = getRecentAlerts(24)
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="container mx-auto py-8">
+      <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
       <Navigation />
       
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
@@ -96,7 +156,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
-                Welcome back, {session.user?.name || session.user?.email}!
+                Welcome back, {user?.full_name || user?.email}!
               </h1>
               <p className="mt-2 text-gray-600">
                 Monitor environmental changes with real-time satellite analysis

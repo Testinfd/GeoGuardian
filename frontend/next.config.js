@@ -1,28 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-      {
-        protocol: 'http',
-        hostname: 'localhost',
-        port: '8000',
-      },
-    ],
-  },
+  reactStrictMode: true,
+  swcMinify: true,
   env: {
-    CUSTOM_KEY: 'my-value',
+    // Supabase configuration
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    
+    // API configuration
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
   },
-  webpack: (config) => {
-    // Fix for leaflet in Next.js
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      canvas: false,
-    };
-    return config;
+  
+  // Enable server components debug info
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/auth-helpers-nextjs'],
   },
 }
 

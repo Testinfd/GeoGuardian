@@ -7,7 +7,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useIsAuthenticated } from '@/stores/auth'
 import { 
   Map, 
   Plus, 
@@ -156,8 +156,14 @@ function AOIGridView({ aois, selectedAOI, onAOISelect, onEdit, onDelete, onView 
 
 export default function AOIListPage() {
   const router = useRouter()
-  const { data: session } = useSession()
-  
+  const isAuthenticated = useIsAuthenticated()
+  const [isClient, setIsClient] = useState(false)
+
+  // Mark when we're on the client side
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
   // Store state
   const { 
     aois, 
@@ -204,10 +210,10 @@ export default function AOIListPage() {
 
   // Effects
   useEffect(() => {
-    if (session) {
+    if (isAuthenticated) {
       fetchAOIs()
     }
-  }, [session, fetchAOIs])
+  }, [isAuthenticated, fetchAOIs])
 
   // Handlers
   const handleCreateAOI = () => {
@@ -241,8 +247,8 @@ export default function AOIListPage() {
     selectAOI(aoi)
   }
 
-  // Redirect if not authenticated
-  if (!session) {
+  // Redirect if not authenticated - only on client side
+  if (isClient && !isAuthenticated) {
     router.push('/auth/login')
     return null
   }

@@ -7,9 +7,8 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useSession } from 'next-auth/react'
-import { 
-  BarChart3, 
+import { useIsAuthenticated } from '@/stores/auth'
+import {
   Play,
   Pause,
   Clock,
@@ -158,8 +157,14 @@ function AnalysisCard({ analysis, onView, onCancel, onRetry, onDelete }: Analysi
 export default function AnalysisListPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { data: session } = useSession()
-  
+  const isAuthenticated = useIsAuthenticated()
+  const [isClient, setIsClient] = useState(false)
+
+  // Mark when we're on the client side
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
   // URL params
   const aoiFilter = searchParams.get('aoi')
   
@@ -257,8 +262,8 @@ export default function AnalysisListPage() {
     router.push('/analysis/new')
   }
 
-  // Redirect if not authenticated
-  if (!session) {
+  // Redirect if not authenticated - only on client side
+  if (isClient && !isAuthenticated) {
     router.push('/auth/login')
     return null
   }

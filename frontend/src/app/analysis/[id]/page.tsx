@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useParams } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useIsAuthenticated } from '@/stores/auth'
 import { 
   ArrowLeft,
   Download,
@@ -182,8 +182,14 @@ function VisualizationGallery({ visualizations }: VisualizationGalleryProps) {
 export default function AnalysisResultPage() {
   const router = useRouter()
   const params = useParams()
-  const { data: session } = useSession()
-  
+  const isAuthenticated = useIsAuthenticated()
+  const [isClient, setIsClient] = useState(false)
+
+  // Mark when we're on the client side
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
   const analysisId = params.id as string
 
   // Store state
@@ -205,7 +211,7 @@ export default function AnalysisResultPage() {
   const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
-    if (!session) {
+    if (isClient && !isAuthenticated) {
       router.push('/auth/login')
       return
     }
@@ -220,7 +226,7 @@ export default function AnalysisResultPage() {
         stopPolling(analysisId)
       }
     }
-  }, [analysisId, session])
+  }, [analysisId, isAuthenticated])
 
   const loadAnalysis = async () => {
     try {
@@ -293,7 +299,7 @@ export default function AnalysisResultPage() {
     }
   }
 
-  if (!session) {
+  if (!isAuthenticated) {
     return null
   }
 

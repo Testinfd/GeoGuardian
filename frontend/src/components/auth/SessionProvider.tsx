@@ -1,17 +1,15 @@
 /**
  * Session Provider Component
- * Wraps the app with NextAuth SessionProvider
+ * Simple wrapper for Supabase authentication context
  */
 
 'use client'
 
-import { SessionProvider as NextAuthSessionProvider } from 'next-auth/react'
-import { ReactNode } from 'react'
-
 interface SessionProviderProps {
-  children: ReactNode
+  children: React.ReactNode
 }
 
 export function SessionProvider({ children }: SessionProviderProps) {
-  return <NextAuthSessionProvider>{children}</NextAuthSessionProvider>
+  // For now, just pass through children since we're handling auth directly in stores
+  return <>{children}</>
 }

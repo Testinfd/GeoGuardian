@@ -3,22 +3,15 @@
  * Displays authentication errors with helpful messages
  */
 
+'use client'
+
 import React from 'react'
-import { Metadata } from 'next'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui'
-import { Shield, AlertTriangle, ArrowLeft, Home } from 'lucide-react'
+import { Button, Card, Alert } from '@/components/ui'
+import { Shield, AlertTriangle, ArrowLeft, Home, AlertCircle } from 'lucide-react'
 
-export const metadata: Metadata = {
-  title: 'Authentication Error | GeoGuardian',
-  description: 'An error occurred during authentication.',
-}
-
-interface AuthErrorPageProps {
-  searchParams: {
-    error?: string
-  }
-}
+// This page now uses client-side hooks for search params
 
 const getErrorMessage = (error: string | undefined) => {
   switch (error) {
@@ -83,127 +76,58 @@ const getErrorMessage = (error: string | undefined) => {
   }
 }
 
-export default function AuthErrorPage({ searchParams }: AuthErrorPageProps) {
-  const { error } = searchParams
-  const errorInfo = getErrorMessage(error)
-
+export default function AuthErrorPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const error = searchParams.get('error') || undefined
+  
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        {/* Header */}
-        <div className="text-center">
-          <Link 
-            href="/"
-            className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-6 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to home
-          </Link>
-          
-          <div className="flex justify-center">
-            <div className="flex items-center space-x-3">
-              <div className="p-3 bg-primary-600 rounded-xl shadow-lg">
-                <Shield className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">GeoGuardian</h1>
-                <p className="text-sm text-gray-600">Environmental Monitoring</p>
-              </div>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
+      <div className="w-full max-w-md">
+        <Card className="w-full">
+          <div className="p-6">
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-red-600 mb-2">Authentication Error</h1>
+              <p className="text-gray-600">Something went wrong with your authentication</p>
             </div>
-          </div>
-        </div>
-      </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-xl sm:rounded-lg sm:px-10 border border-gray-200">
-          {/* Error Icon */}
-          <div className="flex justify-center mb-6">
-            <div className="p-4 bg-red-100 rounded-full">
-              <AlertTriangle className="w-8 h-8 text-red-600" />
-            </div>
-          </div>
-
-          {/* Error Message */}
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {errorInfo.title}
-            </h2>
-            <p className="text-gray-600">
-              {errorInfo.message}
-            </p>
-            
             {error && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-md">
-                <p className="text-xs text-gray-500">
-                  Error code: {error}
+              <Alert variant="danger" className="mb-6">
+                <div className="flex items-center mb-2">
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  <span className="font-medium">Error</span>
+                </div>
+                <p>
+                  {error === 'OAuthCallback'
+                    ? 'Failed to complete OAuth sign-in. Please try again.'
+                    : error === 'Session expired'
+                    ? 'Your session has expired. Please sign in again.'
+                    : 'Authentication failed. Please try again.'}
                 </p>
-              </div>
+              </Alert>
             )}
-          </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-3">
-            {errorInfo.action === 'Try Again' && (
-              <Button asChild className="w-full">
-                <Link href="/auth/login">
+            <div className="space-y-4">
+              <p className="text-center text-sm text-gray-600">
+                Please try signing in again
+              </p>
+              <div className="flex justify-center">
+                <Button onClick={() => router.push('/auth/login')} className="w-full">
                   Try Again
-                </Link>
-              </Button>
-            )}
-            
-            {errorInfo.action === 'Sign In' && (
-              <Button asChild className="w-full">
-                <Link href="/auth/login">
-                  Sign In
-                </Link>
-              </Button>
-            )}
-            
-            {errorInfo.action === 'Try Different Account' && (
-              <Button asChild className="w-full">
-                <Link href="/auth/login">
-                  Try Different Account
-                </Link>
-              </Button>
-            )}
-            
-            {errorInfo.action === 'Contact Support' && (
-              <Button asChild className="w-full">
-                <Link href="/contact">
-                  Contact Support
-                </Link>
-              </Button>
-            )}
-            
-            {errorInfo.action === 'Request New Link' && (
-              <Button asChild className="w-full">
-                <Link href="/auth/forgot-password">
-                  Request New Link
-                </Link>
-              </Button>
-            )}
-
-            <Button variant="outline" asChild className="w-full">
-              <Link href="/">
-                <Home className="w-4 h-4 mr-2" />
-                Go Home
-              </Link>
-            </Button>
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* Help Text */}
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
-            Still having trouble?{' '}
-            <Link 
-              href="/contact"
-              className="text-primary-600 hover:text-primary-500 font-medium"
-            >
-              Contact our support team
-            </Link>
-          </p>
-        </div>
+          <div className="px-6 pb-6">
+            <p className="text-center text-xs text-gray-500">
+              Having trouble? Contact support at{' '}
+              <a href="mailto:support@geoguardian.com" className="font-medium text-primary-600 hover:underline">
+                support@geoguardian.com
+              </a>
+            </p>
+          </div>
+        </Card>
       </div>
     </div>
   )

@@ -5,8 +5,7 @@
 
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import { SessionProvider } from '@/components/auth/SessionProvider'
-import { NotificationProvider, ToastContainer } from '@/components/notifications/NotificationSystem'
+import { ClientLayout } from '@/components/layout/ClientLayout'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -41,17 +40,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="h-full">
-      <body className={`${inter.className} h-full bg-background-100 text-text-800 antialiased`}>
-        <SessionProvider>
-          <NotificationProvider>
-            <div id="root" className="h-full">
-              {children}
-            </div>
-            <div id="portal-root" />
-            <ToastContainer />
-          </NotificationProvider>
-        </SessionProvider>
+    <html lang="en">
+      <body>
+        <ClientLayout>
+          {children}
+        </ClientLayout>
       </body>
     </html>
   )
