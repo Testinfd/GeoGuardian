@@ -67,56 +67,103 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchDashboardData = async () => {
       if (!isAuthenticated) return
-      
+
       try {
         setIsLoading(true)
-        
-        // Fetch data in parallel
+
+        // Fetch data in parallel with proper error handling
         const [aoiResponse, analysisResponse, alertResponse, statusResponse] = await Promise.allSettled([
-          aoiAPI.getAll(),
-          analysisAPI.getResults(),
-          alertsAPI.getAll(),
-          analysisAPI.getSystemStatus()
+          aoiAPI.getAll().catch(error => {
+            console.error('AOI API error:', error)
+            throw error
+          }),
+          analysisAPI.getResults().catch(error => {
+            console.error('Analysis API error:', error)
+            throw error
+          }),
+          alertsAPI.getAll().catch(error => {
+            console.warn('Alerts API error (this is expected if no alerts exist):', error.message)
+            // Don't throw error for alerts - just return empty array
+            return { data: [] }
+          }),
+          analysisAPI.getSystemStatus().catch(error => {
+            console.error('System status API error:', error)
+            throw error
+          })
         ])
-        
+
         // Process AOI data
         if (aoiResponse.status === 'fulfilled') {
-          const aoiData = aoiResponse.value.data
-          setAois(aoiData)
-          setAoiStats({
-            total: aoiData.length,
-            withAnalysis: aoiData.filter((aoi: any) => aoi.analysis_count > 0).length
-          })
+          try {
+            const aoiData = Array.isArray(aoiResponse.value.data) ? aoiResponse.value.data : []
+            setAois(aoiData)
+            setAoiStats({
+              total: aoiData.length,
+              withAnalysis: aoiData.filter((aoi: any) => aoi.analysis_count > 0).length
+            })
+          } catch (error) {
+            console.error('Error processing AOI data:', error)
+            setAoiStats({ total: 0, withAnalysis: 0 })
+          }
+        } else {
+          console.error('AOI fetch failed:', aoiResponse.reason)
+          setAoiStats({ total: 0, withAnalysis: 0 })
         }
-        
+
         // Process analysis data
         if (analysisResponse.status === 'fulfilled') {
-          const analysisData = analysisResponse.value.data
-          setActiveAnalyses(analysisData)
-          setAnalysisStats({
-            total: analysisData.length,
-            running: analysisData.filter((analysis: any) => analysis.status === 'running').length
-          })
+          try {
+            const analysisData = Array.isArray(analysisResponse.value.data) ? analysisResponse.value.data : []
+            setActiveAnalyses(analysisData)
+            setAnalysisStats({
+              total: analysisData.length,
+              running: analysisData.filter((analysis: any) => analysis.status === 'running').length
+            })
+          } catch (error) {
+            console.error('Error processing analysis data:', error)
+            setAnalysisStats({ total: 0, running: 0 })
+          }
+        } else {
+          console.error('Analysis fetch failed:', analysisResponse.reason)
+          setAnalysisStats({ total: 0, running: 0 })
         }
-        
+
         // Process alerts data
         if (alertResponse.status === 'fulfilled') {
-          const alertData = alertResponse.value.data
-          setRecentAlerts(alertData)
-          setAlertStats({
-            byStatus: {
-              active: alertData.filter((alert: any) => alert.status === 'active').length
-            }
-          })
+          try {
+            const alertData = Array.isArray(alertResponse.value.data) ? alertResponse.value.data : []
+            setRecentAlerts(alertData)
+            setAlertStats({
+              byStatus: {
+                active: alertData.filter((alert: any) => alert.status === 'active').length
+              }
+            })
+          } catch (error) {
+            console.error('Error processing alerts data:', error)
+            setAlertStats({ byStatus: { active: 0 } })
+          }
+        } else {
+          console.error('Alerts fetch failed:', alertResponse.reason)
+          setAlertStats({ byStatus: { active: 0 } })
         }
-        
+
         // Process system status
         if (statusResponse.status === 'fulfilled') {
-          setSystemStatus(statusResponse.value.data || systemStatus)
+          try {
+            setSystemStatus(statusResponse.value.data || systemStatus)
+          } catch (error) {
+            console.error('Error processing system status:', error)
+          }
+        } else {
+          console.error('System status fetch failed:', statusResponse.reason)
         }
-        
+
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
+        // Set default values to prevent undefined errors
+        setAoiStats({ total: 0, withAnalysis: 0 })
+        setAnalysisStats({ total: 0, running: 0 })
+        setAlertStats({ byStatus: { active: 0 } })
       } finally {
         setIsLoading(false)
       }

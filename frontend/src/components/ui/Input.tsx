@@ -33,21 +33,21 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
   }
   
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (onChange) {
-      // Check if onChange accepts a value (custom style) or an event (react-hook-form style)
-      const targetValue = e.target.value
+    if (!onChange) return
 
-      // Try calling with the value first (our custom pattern)
+    // Check if onChange accepts an event (standard React pattern) or just a value (custom pattern)
+    const targetValue = e.target.value
+
+    // Try calling with the full event first (standard React pattern)
+    try {
+      (onChange as (event: React.ChangeEvent<HTMLInputElement>) => void)(e)
+    } catch {
+      // If that fails, try calling with just the value (custom pattern)
       try {
         (onChange as (value: string) => void)(targetValue)
       } catch {
-        // If that fails, try calling with the full event (react-hook-form pattern)
-        try {
-          (onChange as (event: React.ChangeEvent<HTMLInputElement>) => void)(e)
-        } catch {
-          // If both fail, log the issue
-          console.warn('Input onChange handler failed for both value and event patterns')
-        }
+        // If both fail, log the issue
+        console.warn('Input onChange handler failed for both value and event patterns')
       }
     }
   }

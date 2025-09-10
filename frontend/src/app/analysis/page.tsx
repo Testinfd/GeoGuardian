@@ -24,7 +24,8 @@ import {
   Calendar,
   TrendingUp,
   Activity,
-  RotateCcw
+  RotateCcw,
+  BarChart3
 } from 'lucide-react'
 import { Navigation } from '@/components/layout'
 import { Button, Card, Input, Loading, Badge, Modal, Alert } from '@/components/ui'

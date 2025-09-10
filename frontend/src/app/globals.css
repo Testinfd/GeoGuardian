@@ -39,13 +39,7 @@
   --transition-slow: 300ms ease-in-out;
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-background: #1a1a1a;
-    --color-text: #f8f9fa;
-  }
-}
+/* Light theme only - no dark mode support */
 
 /* Base styles */
 html {

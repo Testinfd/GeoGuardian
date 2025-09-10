@@ -26,6 +26,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
 // Create axios instance with default configuration
 class ApiClient {
   private client: AxiosInstance
+  private isRefreshing = false
 
   constructor() {
     this.client = axios.create({
@@ -39,53 +40,130 @@ class ApiClient {
     // Request interceptor to add auth token
     this.client.interceptors.request.use(
       async (config) => {
-        // Try to get token from Supabase session
-        try {
-          const { data } = await supabase.auth.getSession();
-          const token = data.session?.access_token;
-          
-          if (token) {
-            config.headers.Authorization = `Bearer ${token}`
-            return config
+        let token = null;
+
+        // First try to get token from localStorage (most reliable)
+        token = localStorage.getItem('auth_token');
+
+        // If no token in localStorage, try to get from Supabase session
+        if (!token) {
+          try {
+            console.log('Getting fresh token from Supabase session...');
+            const { data, error } = await supabase.auth.getSession();
+            if (!error && data.session?.access_token) {
+              token = data.session.access_token;
+              // Store it in localStorage for future use
+              localStorage.setItem('auth_token', token);
+              console.log('Fresh token stored in localStorage');
+            } else {
+              console.warn('No session found in Supabase');
+            }
+          } catch (error) {
+            console.warn('Failed to get Supabase session:', error);
           }
-        } catch (error) {
-          console.warn('Failed to get Supabase session:', error)
         }
 
-        // Fallback to localStorage (legacy auth)
-        const storedToken = localStorage.getItem('auth_token')
-        if (storedToken) {
-          config.headers.Authorization = `Bearer ${storedToken}`
+        // Set the token in the request headers
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+          console.log('Token added to request headers');
         } else {
-          console.log('No authentication token found - API call may fail')
+          console.warn('No authentication token available for API request:', config.url);
         }
-        
-        return config
+
+        return config;
       },
-      (error) => Promise.reject(error)
+      (error) => {
+        console.error('Request interceptor error:', error);
+        return Promise.reject(error);
+      }
     )
 
     // Response interceptor for error handling
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
-        if (error.response?.status === 401) {
-          // Handle unauthorized - clear tokens and redirect to login
-          if (typeof window !== 'undefined') {
-            console.log('401 Unauthorized - clearing authentication and redirecting to login')
-            
-            // Clear localStorage tokens
-            localStorage.removeItem('auth_token')
-            
-            // Clear auth store
-            useAuthStore.getState().logout()
-            
-            // Redirect if we're not already on the login page
-            if (!window.location.pathname.includes('/auth/login')) {
-              window.location.href = '/auth/login?error=Session expired'
-            }
+        // Handle network errors (connection refused, timeout, etc.)
+        if (!error.response && error.code) {
+          console.error(`Network error (${error.code}): ${error.message}`)
+          // Don't redirect for network errors, let the component handle it
+          return Promise.reject({
+            ...error,
+            message: 'Network error - please check your connection and try again'
+          })
+        }
+
+        // Handle HTTP errors
+        if (error.response) {
+          const { status, data } = error.response
+
+          switch (status) {
+            case 401:
+              // Handle unauthorized - try to refresh token first
+              if (typeof window !== 'undefined') {
+                console.log('401 Unauthorized - attempting to refresh session')
+
+                // Prevent multiple simultaneous refresh attempts
+                if (this.isRefreshing) {
+                  console.log('Refresh already in progress, rejecting request');
+                  return Promise.reject(error);
+                }
+
+                this.isRefreshing = true;
+
+                try {
+                  console.log('Attempting to refresh Supabase session...');
+                  const { data, error: refreshError } = await supabase.auth.refreshSession();
+
+                  if (!refreshError && data.session?.access_token) {
+                    console.log('Session refreshed successfully');
+                    // Store the new token
+                    localStorage.setItem('auth_token', data.session.access_token);
+
+                    // Retry the original request with the new token
+                    const originalRequest = error.config;
+                    if (originalRequest) {
+                      originalRequest.headers.Authorization = `Bearer ${data.session.access_token}`;
+                      return this.client.request(originalRequest);
+                    }
+                  } else {
+                    console.log('Session refresh failed - no valid session returned');
+                  }
+                } catch (refreshError) {
+                  console.log('Session refresh failed with error:', refreshError);
+                } finally {
+                  this.isRefreshing = false;
+                }
+
+                // If refresh failed or wasn't possible, clear tokens and redirect
+                localStorage.removeItem('auth_token');
+                useAuthStore.getState().logout();
+
+                // Only redirect if we're not already on the login page
+                if (!window.location.pathname.includes('/auth/login')) {
+                  window.location.href = '/auth/login?error=Session expired';
+                }
+              }
+              break
+
+            case 403:
+              console.error('403 Forbidden - insufficient permissions')
+              break
+
+            case 404:
+              console.error('404 Not Found - endpoint does not exist')
+              break
+
+            case 500:
+              console.error('500 Internal Server Error - server issue')
+              break
+
+            default:
+              console.error(`${status} Error:`, data?.message || 'Unknown error')
+              break
           }
         }
+
         return Promise.reject(error)
       }
     )

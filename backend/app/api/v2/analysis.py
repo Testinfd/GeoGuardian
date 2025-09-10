@@ -576,6 +576,61 @@ async def perform_historical_analysis(
             detail=f"Historical analysis failed: {str(e)}"
         )
 
+@router.get("/results")
+async def get_analysis_results():
+    """
+    Get recent analysis results
+
+    Returns the most recent analysis results from the system.
+    This is used by the dashboard to display recent activity.
+    """
+
+    try:
+        supabase = get_supabase()
+
+        # Get recent analysis results from database
+        # For now, return a mock response since we don't have a results table yet
+        # This can be enhanced later to query actual analysis results
+
+        mock_results = [
+            {
+                "id": "analysis_001",
+                "aoi_id": "aoi_001",
+                "status": "completed",
+                "analysis_type": "comprehensive",
+                "created_at": datetime.now().isoformat(),
+                "progress": 100,
+                "confidence": 0.85,
+                "detections": [
+                    {
+                        "type": "vegetation_loss",
+                        "confidence": 0.82,
+                        "area_affected": 12500,  # square meters
+                        "coordinates": [-122.4194, 37.7749]
+                    }
+                ]
+            },
+            {
+                "id": "analysis_002",
+                "aoi_id": "aoi_002",
+                "status": "running",
+                "analysis_type": "vegetation",
+                "created_at": (datetime.now() - timedelta(minutes=5)).isoformat(),
+                "progress": 65,
+                "confidence": None,
+                "detections": []
+            }
+        ]
+
+        return mock_results
+
+    except Exception as e:
+        logger.error(f"Failed to get analysis results: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve analysis results: {str(e)}"
+        )
+
 # Remove old functions
 # async def generate_analysis_visualizations(...) - Replaced by AssetManager
 # @router.post("/batch-analyze") - Can be added back if needed

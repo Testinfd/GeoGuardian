@@ -14,17 +14,32 @@ security = HTTPBearer()
 async def verify_supabase_token(token: str) -> dict:
     """Verify Supabase JWT token"""
     try:
+        # Use Supabase's built-in user retrieval to verify the token
         supabase = get_supabase()
-        # Verify the JWT token with Supabase
-        payload = jwt.decode(
-            token,
-            options={"verify_signature": False}  # Supabase handles verification
-        )
-        return payload
-    except JWTError:
+
+        # This will automatically verify the token and return user data
+        user_response = await supabase.auth.get_user(token)
+
+        if user_response.user:
+            # Return the user payload
+            return {
+                "sub": user_response.user.id,
+                "email": user_response.user.email,
+                "name": user_response.user.user_metadata.get("name") if user_response.user.user_metadata else None,
+                "picture": user_response.user.user_metadata.get("avatar_url") if user_response.user.user_metadata else None,
+                "aud": "authenticated",
+                "role": "authenticated"
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+    except Exception as e:
+        print(f"Token verification failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            detail="Could not validate token"
         )
 
 

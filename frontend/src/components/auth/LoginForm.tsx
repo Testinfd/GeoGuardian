@@ -15,7 +15,6 @@ import Link from 'next/link'
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react'
 import { Button, Input, Alert } from '@/components/ui'
 import { cn } from '@/lib/design-system'
-import { supabase } from '@/lib/supabase-auth'
 
 // Validation schema
 const loginSchema = z.object({
@@ -44,21 +43,15 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
+  const { login } = useAuthStore()
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError('')
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        throw error
-      }
-
+      await login({ email, password })
       router.push('/dashboard')
     } catch (err: any) {
       setError(err.message || 'Failed to sign in')
