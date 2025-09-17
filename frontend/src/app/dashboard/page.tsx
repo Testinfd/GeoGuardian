@@ -5,7 +5,8 @@
 
 'use client'
 
-import { useIsAuthenticated, useUser } from '@/stores/auth'
+import { useUser } from '@/stores/auth-store'
+import { ProtectedRoute } from '@/components/auth/AuthProvider'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Navigation } from '@/components/layout'
@@ -14,7 +15,7 @@ import { SystemStatus, AnalysisSelector } from '@/components/analysis'
 import { useAOIStore } from '@/stores/aoi'
 import { useAnalysisStore } from '@/stores/analysis'
 import { useAlertStore } from '@/stores/alerts'
-import { analysisAPI, aoiAPI, alertsAPI } from '@/services/api'
+import { apiClient } from '@/lib/api-client'
 import { 
   BarChart3, 
   Map, 
@@ -25,20 +26,16 @@ import {
   Eye,
   Clock,
   CheckCircle,
-  Settings
+  Settings,
+  Users,
+  Target
 } from 'lucide-react'
+import { MapContainer } from '@/components/map'
 import type { AOI, AnalysisResult, Alert as AlertType, SystemStatus as SystemStatusType } from '@/types'
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const isAuthenticated = useIsAuthenticated()
   const user = useUser()
-  const [isClient, setIsClient] = useState(false)
-
-  // Mark when we're on the client side
-  useEffect(() => {
-    setIsClient(true)
-  }, [])
+  const router = useRouter()
 
   // State for dashboard data
   const [aoiStats, setAoiStats] = useState({ total: 0, withAnalysis: 0 })
@@ -66,27 +63,27 @@ export default function DashboardPage() {
   // Fetch dashboard data
   useEffect(() => {
     const fetchDashboardData = async () => {
-      if (!isAuthenticated) return
+      if (!user) return
 
       try {
         setIsLoading(true)
 
         // Fetch data in parallel with proper error handling
         const [aoiResponse, analysisResponse, alertResponse, statusResponse] = await Promise.allSettled([
-          aoiAPI.getAll().catch(error => {
+          apiClient.get('/api/v2/aoi').catch((error: any) => {
             console.error('AOI API error:', error)
             throw error
           }),
-          analysisAPI.getResults().catch(error => {
+          apiClient.get('/api/v2/analysis').catch((error: any) => {
             console.error('Analysis API error:', error)
             throw error
           }),
-          alertsAPI.getAll().catch(error => {
+          apiClient.get('/api/v2/alerts').catch((error: any) => {
             console.warn('Alerts API error (this is expected if no alerts exist):', error.message)
             // Don't throw error for alerts - just return empty array
             return { data: [] }
           }),
-          analysisAPI.getSystemStatus().catch(error => {
+          apiClient.get('/api/v2/system/status').catch((error: any) => {
             console.error('System status API error:', error)
             throw error
           })
@@ -150,7 +147,25 @@ export default function DashboardPage() {
         // Process system status
         if (statusResponse.status === 'fulfilled') {
           try {
-            setSystemStatus(statusResponse.value.data || systemStatus)
+            const systemData = statusResponse.value.data
+            if (systemData && typeof systemData === 'object') {
+              setSystemStatus(systemData as SystemStatusType)
+            } else {
+              setSystemStatus({
+                status: 'down' as const,
+                services: { 
+                  database: 'down' as const, 
+                  sentinel_hub: 'down' as const, 
+                  analysis_engine: 'down' as const, 
+                  email_service: 'down' as const 
+                },
+                queue_size: 0,
+                active_analyses: 0,
+                last_check: new Date().toISOString(),
+                version: '1.0.0',
+                uptime: 0
+              })
+            }
           } catch (error) {
             console.error('Error processing system status:', error)
           }
@@ -170,17 +185,9 @@ export default function DashboardPage() {
     }
     
     fetchDashboardData()
-  }, [isAuthenticated])
+  }, [user])
   
-  useEffect(() => {
-    if (isClient && !isAuthenticated) {
-      router.push('/auth/login')
-    }
-  }, [isAuthenticated, router, isClient])
 
-  if (isClient && !isAuthenticated) {
-    return null
-  }
   
   if (isLoading) {
     return (
@@ -193,17 +200,17 @@ export default function DashboardPage() {
   }
   
   return (
-    <div className="container mx-auto py-8">
-      <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
-      <Navigation />
+    <ProtectedRoute>
+      <div className="container mx-auto py-8">
+        <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
       
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Welcome Header */}
         <div className="px-4 py-6 sm:px-0">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
-                Welcome back, {user?.full_name || user?.email}!
+                Welcome back, {user?.full_name || user?.name || user?.email}!
               </h1>
               <p className="mt-2 text-gray-600">
                 Monitor environmental changes with real-time satellite analysis
@@ -384,15 +391,14 @@ export default function DashboardPage() {
             </div>
 
             {aois.length > 0 ? (
-              <div className="h-72 flex items-center justify-center bg-gray-100 rounded-lg">
-                <div className="text-center">
-                  <Map className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                  <h3 className="font-medium text-gray-900 mb-2">Map Loading...</h3>
-                  <p className="text-sm text-gray-600">
-                    Interactive map temporarily disabled due to SSR issues
-                  </p>
-                </div>
-              </div>
+              <MapContainer
+                height="288px"
+                aois={aois}
+                center={{ lat: 39.8283, lng: -98.5795 }}
+                zoom={4}
+                className="rounded-lg"
+                showControls={true}
+              />
             ) : (
               <div className="h-72 flex items-center justify-center bg-gray-50 rounded-lg">
                 <div className="text-center">
@@ -465,6 +471,7 @@ export default function DashboardPage() {
           </Card>
         </div>
       </main>
-    </div>
+      </div>
+    </ProtectedRoute>
   )
 }

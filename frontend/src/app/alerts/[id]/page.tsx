@@ -17,10 +17,11 @@ import { useAOIStore } from '@/stores/aoi'
 import type { Alert, VoteType } from '@/types'
 
 interface AlertDetailsPageProps {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 const AlertDetailsPage: React.FC<AlertDetailsPageProps> = ({ params }) => {
+  const [alertId, setAlertId] = useState<string | null>(null)
   const router = useRouter()
   const {
     selectedAlert,
@@ -41,12 +42,17 @@ const AlertDetailsPage: React.FC<AlertDetailsPageProps> = ({ params }) => {
   const [showCommentBox, setShowCommentBox] = useState(false)
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   
-  // Fetch alert data
+  // Resolve params and fetch alert data
   useEffect(() => {
-    if (params.id) {
-      fetchAlert(params.id)
+    const resolveParams = async () => {
+      const resolvedParams = await params
+      setAlertId(resolvedParams.id)
+      if (resolvedParams.id) {
+        fetchAlert(resolvedParams.id)
+      }
     }
-  }, [params.id, fetchAlert])
+    resolveParams()
+  }, [params, fetchAlert])
   
   // Set user vote from alert data
   useEffect(() => {

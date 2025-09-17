@@ -12,7 +12,8 @@ import type {
   CreateAOIRequest, 
   UpdateAOIRequest 
 } from '@/types'
-import { aoiAPI } from '@/services/api'
+import { apiClient } from '@/lib/api-client'
+import { aoiAPI } from '@/lib/api'
 
 interface AOIStore extends AOIState, AOIActions {}
 

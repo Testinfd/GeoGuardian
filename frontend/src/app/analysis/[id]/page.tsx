@@ -8,7 +8,8 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useParams } from 'next/navigation'
-import { useIsAuthenticated } from '@/stores/auth'
+import { useUser } from '@/stores/auth-store'
+import { ProtectedRoute } from '@/components/auth/AuthProvider'
 import { 
   ArrowLeft,
   Download,
@@ -182,7 +183,7 @@ function VisualizationGallery({ visualizations }: VisualizationGalleryProps) {
 export default function AnalysisResultPage() {
   const router = useRouter()
   const params = useParams()
-  const isAuthenticated = useIsAuthenticated()
+  const isAuthenticated = !!useUser()
   const [isClient, setIsClient] = useState(false)
 
   // Mark when we're on the client side

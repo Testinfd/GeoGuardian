@@ -7,7 +7,8 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useIsAuthenticated } from '@/stores/auth'
+import { useUser } from '@/stores/auth-store'
+import { ProtectedRoute } from '@/components/auth/AuthProvider'
 import { 
   Map, 
   Plus, 
@@ -156,7 +157,7 @@ function AOIGridView({ aois, selectedAOI, onAOISelect, onEdit, onDelete, onView 
 
 export default function AOIListPage() {
   const router = useRouter()
-  const isAuthenticated = useIsAuthenticated()
+  const isAuthenticated = !!useUser()
   const [isClient, setIsClient] = useState(false)
 
   // Mark when we're on the client side

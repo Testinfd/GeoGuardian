@@ -7,7 +7,8 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useIsAuthenticated, useUser } from '@/stores/auth'
+import { useUser } from '@/stores/auth-store'
+import { ProtectedRoute } from '@/components/auth/AuthProvider'
 import { ArrowLeft, Play, AlertCircle, Info } from 'lucide-react'
 import { Navigation } from '@/components/layout'
 import { Button, Card, Loading, Alert } from '@/components/ui'
@@ -20,7 +21,7 @@ import type { AOI, AnalysisType } from '@/types'
 export default function NewAnalysisPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const isAuthenticated = useIsAuthenticated()
+  const isAuthenticated = !!useUser()
   const user = useUser()
   const [isClient, setIsClient] = useState(false)
 

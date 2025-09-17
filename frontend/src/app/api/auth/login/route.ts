@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase-auth'
+import { supabase } from '@/lib/auth'
 
 // POST /api/v1/auth/login
 export async function POST(request: Request) {

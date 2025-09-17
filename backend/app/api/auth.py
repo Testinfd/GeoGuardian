@@ -4,7 +4,7 @@ from supabase import Client
 from pydantic import BaseModel
 from typing import Optional
 from ..core.auth import verify_google_token, get_or_create_user, get_current_user
-from ..core.database import get_supabase, get_supabase_admin
+from ..core.database import get_supabase
 from ..utils.email import email_service
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -48,13 +48,8 @@ async def authenticate_with_google(
     # Verify Google token
     user_data = await verify_google_token(request.token)
 
-    # Get or create user (use admin client to bypass RLS)
-    try:
-        supabase_admin = get_supabase_admin()
-        user = await get_or_create_user(user_data, supabase_admin)
-    except Exception:
-        # Fallback to regular client if admin not available
-        user = await get_or_create_user(user_data, supabase)
+    # Get or create user (respecting RLS)
+    user = await get_or_create_user(user_data, supabase)
 
     # Sign in with Supabase to get access token
     try:

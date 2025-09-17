@@ -1,63 +1,44 @@
 /**
  * Login Page
- * User authentication with email/password and Google OAuth
+ * Clean login with new auth system
  */
 
 'use client'
 
 import React from 'react'
-import Link from 'next/link'
-import { GoogleSignIn } from '@/components/auth/GoogleSignIn'
 import { LoginForm } from '@/components/auth/LoginForm'
-import { Card } from '@/components/ui'
+import { PublicRoute } from '@/components/auth/AuthProvider'
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
-      <div className="w-full max-w-md">
-        <Card className="w-full">
-          <div className="p-6">
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">Sign in to GeoGuardian</h1>
-              <p className="mt-2 text-gray-600">Welcome back! Sign in to continue</p>
-            </div>
-
-            <div className="space-y-4">
-              <GoogleSignIn />
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="bg-gray-50 px-2 text-gray-500">
-                    Or continue with
-                  </span>
-                </div>
-              </div>
-              <LoginForm />
-            </div>
-          </div>
-
-          <div className="px-6 pb-6 space-y-4">
-            <p className="text-center text-sm text-gray-600">
-              Don't have an account?{' '}
-              <Link href="/auth/register" className="font-medium text-primary-600 hover:underline">
-                Sign up
-              </Link>
+    <PublicRoute>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="max-w-md w-full space-y-8 p-8">
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Welcome to GeoGuardian
+            </h1>
+            <p className="text-gray-600">
+              Monitor and protect your areas of interest with satellite imagery
             </p>
-            <p className="text-center text-xs text-gray-500">
+          </div>
+          
+          <LoginForm />
+          
+          <div className="text-center text-sm text-gray-500">
+            <p>
               By signing in, you agree to our{' '}
-              <Link href="/terms" className="font-medium text-primary-600 hover:underline">
+              <a href="#" className="text-indigo-600 hover:text-indigo-500">
                 Terms of Service
-              </Link>{' '}
+              </a>{' '}
               and{' '}
-              <Link href="/privacy" className="font-medium text-primary-600 hover:underline">
+              <a href="#" className="text-indigo-600 hover:text-indigo-500">
                 Privacy Policy
-              </Link>
+              </a>
             </p>
           </div>
-        </Card>
+        </div>
       </div>
-    </div>
+    </PublicRoute>
   )
 }

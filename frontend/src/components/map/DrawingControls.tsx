@@ -156,7 +156,7 @@ const DrawingControls: React.FC<DrawingControlsProps> = ({
     } else if (drawingMode === 'rectangle') {
       completePolygon()
     }
-  }, [isDrawing, drawingMode, currentPolygon])
+  }, [isDrawing, drawingMode, currentPolygon, completePolygon])
 
   // Complete the polygon and convert to GeoJSON
   const completePolygon = useCallback(() => {

@@ -7,6 +7,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { Loading } from '@/components/ui'
+import SentinelMap from './SentinelMap'
 import type { AOI, GeoJSONPolygon, LatLng } from '@/types'
 import { useAOIStore } from '@/stores/aoi'
 
@@ -21,6 +22,7 @@ interface MapProps {
   onMapClick?: (latlng: LatLng) => void
   onPolygonCreated?: (polygon: GeoJSONPolygon) => void
   onPolygonEdited?: (aoi: AOI, newGeometry: GeoJSONPolygon) => void
+  showControls?: boolean
   className?: string
 }
 
@@ -36,6 +38,7 @@ export default function Map({
   onMapClick,
   onPolygonCreated,
   onPolygonEdited,
+  showControls = true,
   className = '',
 }: MapProps) {
   const [isClient, setIsClient] = useState(false)
@@ -54,18 +57,18 @@ export default function Map({
 
   return (
     <div className={`relative ${className}`} style={{ height }}>
-      {/* Satellite Map Placeholder - Replace with SentinelMap component */}
-      <div className="w-full h-full bg-gray-200 rounded-lg flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600 mb-2">Satellite Map Component</p>
-          <p className="text-sm text-gray-500">Replace this with SentinelMap component</p>
-          {aois.length > 0 && (
-            <p className="text-xs text-gray-400 mt-2">
-              {aois.length} AOI(s) to display
-            </p>
-          )}
-        </div>
-      </div>
+      <SentinelMap
+        center={center}
+        zoom={zoom}
+        height={height}
+        aois={aois}
+        selectedAOI={selectedAOI}
+        drawingMode={drawingMode}
+        onAOISelect={onAOISelect}
+        onPolygonCreated={onPolygonCreated}
+        className="w-full h-full"
+        showControls={showControls}
+      />
 
       {/* Drawing mode indicator */}
       {drawingMode && (

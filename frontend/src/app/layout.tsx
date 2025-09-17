@@ -5,6 +5,7 @@
 
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import { AuthProvider } from '@/components/auth/AuthProvider'
 import { ClientLayout } from '@/components/layout/ClientLayout'
 import './globals.css'
 
@@ -41,10 +42,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>
-        <ClientLayout>
-          {children}
-        </ClientLayout>
+      <body className={inter.className} suppressHydrationWarning>
+        <AuthProvider>
+          <ClientLayout>
+            {children}
+          </ClientLayout>
+        </AuthProvider>
       </body>
     </html>
   )

@@ -15,7 +15,7 @@ import type {
   SystemStatus,
   SystemCapabilities
 } from '@/types'
-import { analysisAPI } from '@/services/api'
+import { apiClient } from '@/lib/api-client'
 
 interface AnalysisStore extends AnalysisState, AnalysisActions {}
 
@@ -46,7 +46,7 @@ export const useAnalysisStore = create<AnalysisStore>()(
       set({ isLoading: true, error: null })
       
       try {
-        const response = await analysisAPI.runComprehensiveAnalysis(request)
+        const response = await apiClient.post<AnalysisResult>('/api/v2/analysis/comprehensive', request)
         const analysis = response.data
         
         set((state) => ({
@@ -82,7 +82,7 @@ export const useAnalysisStore = create<AnalysisStore>()(
       set({ isLoading: true, error: null })
       
       try {
-        const response = await analysisAPI.runHistoricalAnalysis(request)
+        const response = await apiClient.post<AnalysisResult>('/api/v2/analysis/historical', request)
         const analysis = response.data
         
         set((state) => ({
@@ -116,7 +116,7 @@ export const useAnalysisStore = create<AnalysisStore>()(
 
     fetchAnalysisResult: async (id: string): Promise<AnalysisResult> => {
       try {
-        const response = await analysisAPI.getResult(id)
+        const response = await apiClient.get<AnalysisResult>(`/api/v2/analysis/${id}`)
         const analysis = response.data
         
         set((state) => ({
@@ -148,7 +148,7 @@ export const useAnalysisStore = create<AnalysisStore>()(
 
     checkDataAvailability: async (aoiId: string, geojson?: any): Promise<DataAvailability> => {
       try {
-        const response = await analysisAPI.checkDataAvailability(aoiId)
+        const response = await apiClient.get<DataAvailability>(`/api/v2/analysis/data-availability/${aoiId}`)
         return response.data
       } catch (error: any) {
         const errorMessage = error.response?.data?.message || 'Failed to check data availability'
@@ -159,7 +159,7 @@ export const useAnalysisStore = create<AnalysisStore>()(
 
     fetchSystemStatus: async (): Promise<void> => {
       try {
-        const response = await analysisAPI.getSystemStatus()
+        const response = await apiClient.get<any>('/api/v2/system/status')
         const backendData = response.data
 
         // Transform backend response to match frontend SystemStatus interface
@@ -192,7 +192,7 @@ export const useAnalysisStore = create<AnalysisStore>()(
 
     fetchCapabilities: async (): Promise<void> => {
       try {
-        const response = await analysisAPI.getCapabilities()
+        const response = await apiClient.get<SystemCapabilities>('/api/v2/system/capabilities')
         set({
           capabilities: response.data,
           error: null,
@@ -286,7 +286,7 @@ export const useAnalysisStore = create<AnalysisStore>()(
 
     cancelAnalysis: async (id: string): Promise<void> => {
       try {
-        await analysisAPI.cancelAnalysis(id)
+        await apiClient.delete(`/api/v2/analysis/${id}`)
         
         set((state) => {
           const analysis = state.results[id]

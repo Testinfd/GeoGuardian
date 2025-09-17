@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase-auth'
+import { supabase } from '@/lib/auth'
 // Handle Google OAuth callback
 export const dynamic = 'force-dynamic'
 

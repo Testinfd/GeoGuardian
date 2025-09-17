@@ -3,7 +3,7 @@ from supabase import Client
 from typing import List
 from ..models.models import AOI, AOICreate, AOIResponse, User
 from ..core.auth import get_current_user, get_current_user_optional
-from ..core.database import get_supabase, get_supabase_admin
+from ..core.database import get_supabase
 from ..workers.tasks import schedule_aoi_analysis
 
 router = APIRouter(prefix="/aoi", tags=["areas-of-interest"])
@@ -38,7 +38,7 @@ async def create_aoi(
     # For authenticated users, save to database
     if current_user:
         try:
-            # Insert AOI into database using admin client to bypass RLS
+            # Insert AOI into database respecting RLS policies
             from datetime import datetime
             aoi_data_dict = {
                 "id": aoi_id,
@@ -48,13 +48,8 @@ async def create_aoi(
                 # created_at will be set automatically by Supabase
             }
             
-            # Try admin client first (bypasses RLS), fallback to regular client
-            try:
-                admin_supabase = get_supabase_admin()
-                result = admin_supabase.table("aois").insert(aoi_data_dict).execute()
-            except:
-                # Fallback to regular client (might fail due to RLS)
-                result = supabase.table("aois").insert(aoi_data_dict).execute()
+            # Insert using regular client (respecting RLS)
+            result = supabase.table("aois").insert(aoi_data_dict).execute()
             
             # Schedule background analysis
             schedule_aoi_analysis(background_tasks, aoi_id, aoi_data.geojson)

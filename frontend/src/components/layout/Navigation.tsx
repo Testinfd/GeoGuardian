@@ -20,7 +20,7 @@ import {
   BarChart3,
   AlertTriangle
 } from 'lucide-react'
-import { useAuthStore } from '@/stores/auth'
+import { useAuth, useUser } from '@/stores/auth-store'
 import { useUnreadCount } from '@/stores/alerts'
 import { Button, Badge } from '@/components/ui'
 import { NotificationBell, NotificationCenter, useNotifications } from '@/components/notifications/NotificationSystem'
@@ -31,14 +31,21 @@ const Navigation: React.FC = () => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false)
   
-  const { user, isAuthenticated, logout } = useAuthStore()
+  const user = useUser()
+  const { signOut } = useAuth()
+  const isAuthenticated = !!user
   const unreadCount = useUnreadCount()
   const { unreadCount: notificationUnreadCount } = useNotifications()
   const router = useRouter()
   
-  const handleLogout = () => {
-    logout()
-    router.push('/')
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      router.push('/auth/login')
+    } catch (error) {
+      console.error('Logout failed:', error)
+      router.push('/auth/login')
+    }
   }
   
   const navigation = [
@@ -320,3 +327,4 @@ const Navigation: React.FC = () => {
 }
 
 export default Navigation
+export { Navigation }

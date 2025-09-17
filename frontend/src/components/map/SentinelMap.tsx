@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Satellite, ZoomIn, ZoomOut, Download, Layers, Calendar, AlertTriangle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui'
-import { useAuthStore } from '@/stores/auth'
+import { useUser } from '@/stores/auth-store'
 import type { AOI } from '@/types'
 
 interface SentinelMapProps {
@@ -45,7 +45,7 @@ export default function SentinelMap({
   onPolygonCreated,
   className = ""
 }: SentinelMapProps) {
-  const { token } = useAuthStore()
+  const user = useUser()
   const [imagery, setImagery] = useState<SatelliteImagery | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,7 +54,7 @@ export default function SentinelMap({
 
   // Fetch satellite imagery from backend
   const fetchSatelliteImagery = async (aoiGeojson?: any) => {
-    if (!token) return
+    if (!user) return
     
     setIsLoading(true)
     setError(null)
@@ -72,11 +72,10 @@ export default function SentinelMap({
         ]]
       }
 
-      const response = await fetch('/api/v2/analysis/data-availability/preview', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v2/analysis/data-availability/preview`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ geojson })
       })
@@ -112,7 +111,7 @@ export default function SentinelMap({
     } else if (aois.length === 0) {
       fetchSatelliteImagery()
     }
-  }, [selectedAOI, center, token])
+  }, [selectedAOI, center, user])
 
   // Handle zoom controls
   const handleZoomIn = () => {
@@ -204,7 +203,7 @@ export default function SentinelMap({
               <p className="text-sm text-gray-300 mb-4">
                 Real satellite imagery from European Space Agency
               </p>
-              {token ? (
+              {user ? (
                 <Button onClick={() => fetchSatelliteImagery()}>
                   Load Imagery
                 </Button>

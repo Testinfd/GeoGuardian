@@ -13,7 +13,7 @@ import type {
   AlertPriority,
   AlertStatus
 } from '@/types'
-import { alertsAPI } from '@/services/api'
+import { apiClient } from '@/lib/api-client'
 
 interface AlertStore extends AlertState, AlertActions {}
 

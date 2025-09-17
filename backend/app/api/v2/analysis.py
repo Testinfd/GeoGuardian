@@ -337,7 +337,7 @@ async def check_data_availability(
         logger.error(f"Data availability check failed for AOI {aoi_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Data availability check failed: {str(e)}")
 
-@router.get("/status")
+@router.get("/system/status")
 async def get_system_status():
     """
     Get real-time system status and operational capabilities

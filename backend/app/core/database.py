@@ -4,13 +4,9 @@ from .config import settings
 # Create Supabase client (with anon key)
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
 
-# Create admin client (bypasses RLS) - only if service key is available
+# Admin client disabled for security - all operations must respect RLS
 supabase_admin: Client = None
-if settings.SUPABASE_SERVICE_ROLE_KEY:
-    supabase_admin = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
-    print("✅ Supabase admin client initialized (RLS bypassed)")
-else:
-    print("⚠️  Supabase service role key not configured - RLS may cause issues")
+print("🔒 Admin client disabled - All operations respect Row Level Security")
 
 
 def get_supabase() -> Client:
@@ -19,10 +15,8 @@ def get_supabase() -> Client:
 
 
 def get_supabase_admin() -> Client:
-    """Get Supabase admin client (bypasses RLS)"""
-    if not supabase_admin:
-        raise Exception("Service role key not configured")
-    return supabase_admin
+    """DEPRECATED: Admin client disabled for security. Use get_supabase() with proper RLS policies."""
+    raise Exception("Admin client disabled for security. All operations must respect Row Level Security policies.")
 
 
 def create_db_and_tables():

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .core.database import create_db_and_tables
 from .api import auth, aoi, alerts
-from .api.v2 import analysis
+from .api.v2 import analysis, aoi as aoi_v2, alerts as alerts_v2
 
 # Create FastAPI app
 app = FastAPI(
@@ -28,6 +28,8 @@ app.include_router(alerts.router, prefix=settings.API_V1_STR)
 
 # Include v2 routers with enhanced capabilities
 app.include_router(analysis.router, prefix="/api/v2", tags=["analysis-v2"])
+app.include_router(aoi_v2.router, prefix="/api/v2/aoi", tags=["aoi-v2"])
+app.include_router(alerts_v2.router, prefix="/api/v2/alerts", tags=["alerts-v2"])
 
 
 @app.on_event("startup")

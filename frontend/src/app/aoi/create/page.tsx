@@ -7,7 +7,8 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useIsAuthenticated } from '@/stores/auth'
+import { useUser } from '@/stores/auth-store'
+import { ProtectedRoute } from '@/components/auth/AuthProvider'
 import { 
   ArrowLeft, 
   Save, 
@@ -60,7 +61,7 @@ function AOICreationStep({ step, title, description, isActive, isCompleted }: AO
 
 export default function CreateAOIPage() {
   const router = useRouter()
-  const isAuthenticated = useIsAuthenticated()
+  const isAuthenticated = !!useUser()
   const [isClient, setIsClient] = useState(false)
 
   // Mark when we're on the client side

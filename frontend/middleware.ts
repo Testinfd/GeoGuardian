@@ -1,9 +1,9 @@
 /**
- * Supabase Middleware for Route Protection
- * Protects authenticated routes and redirects unauthenticated users
+ * Clean Authentication Middleware
+ * Simple session checking without complex logic
  */
 
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
@@ -13,16 +13,16 @@ export async function middleware(req: NextRequest) {
     },
   })
 
-  // Create Supabase client
+  // Create Supabase client for server-side operations
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    'https://exhuqtrrklcichdteauv.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4aHVxdHJya2xjaWNoZHRlYXV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxODEyNzYsImV4cCI6MjA3Mjc1NzI3Nn0.g9KP70igo6rM2gTUhNyhY9Fg6bgKNdb8EeyG2p9devw',
     {
       cookies: {
         get(name: string) {
           return req.cookies.get(name)?.value
         },
-        set(name: string, value: string, options: any) {
+        set(name: string, value: string, options: CookieOptions) {
           req.cookies.set({
             name,
             value,
@@ -39,7 +39,7 @@ export async function middleware(req: NextRequest) {
             ...options,
           })
         },
-        remove(name: string, options: any) {
+        remove(name: string, options: CookieOptions) {
           req.cookies.set({
             name,
             value: '',
@@ -60,37 +60,46 @@ export async function middleware(req: NextRequest) {
     }
   )
 
-  // Get session from Supabase
-  const { data } = await supabase.auth.getSession()
-  const session = data.session
-
-  // Get current path
+  // Get the current path
   const path = req.nextUrl.pathname
 
-  // Redirect unauthenticated users trying to access protected routes
-  if (!session && (path.startsWith('/dashboard') || path.startsWith('/aoi') || path.startsWith('/analysis'))) {
-    const url = req.nextUrl.clone()
-    url.pathname = '/auth/login'
-    url.search = `?callbackUrl=${encodeURIComponent(req.url)}`
-    return NextResponse.redirect(url)
-  }
+  // List of protected routes
+  const protectedRoutes = ['/dashboard', '/aoi', '/analysis', '/alerts']
+  const authRoutes = ['/auth/login', '/auth/register']
 
-  // Redirect authenticated users trying to access auth pages
-  if (session && path.startsWith('/auth')) {
-    const url = req.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
+  // Check if current path is protected
+  const isProtectedRoute = protectedRoutes.some(route => path.startsWith(route))
+  const isAuthRoute = authRoutes.some(route => path.startsWith(route))
 
-  // Allow access to public routes
-  if (path === '/' || path.startsWith('/api/')) {
-    return res
+  try {
+    // Get current session - simple check, no complex validation
+    const { data: { session } } = await supabase.auth.getSession()
+
+    // Redirect logic
+    if (isProtectedRoute && !session) {
+      // User trying to access protected route without session
+      const url = req.nextUrl.clone()
+      url.pathname = '/auth/login'
+      url.search = `?redirectTo=${encodeURIComponent(req.nextUrl.pathname)}`
+      return NextResponse.redirect(url)
+    }
+
+    if (isAuthRoute && session) {
+      // Authenticated user trying to access auth pages
+      const url = req.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+  } catch (error) {
+    console.error('Middleware auth check failed:', error)
+    // On error, allow the request to continue
+    // The client-side auth will handle the actual authentication
   }
 
   return res
 }
 
-// Configure matcher to only run on specific routes
 export const config = {
   matcher: [
     /*
@@ -99,7 +108,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - public files (images, etc.)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

@@ -8,7 +8,8 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useParams } from 'next/navigation'
-import { useIsAuthenticated } from '@/stores/auth'
+import { useUser } from '@/stores/auth-store'
+import { ProtectedRoute } from '@/components/auth/AuthProvider'
 import { 
   ArrowLeft, 
   Edit,
@@ -199,7 +200,7 @@ function RecentAlerts({ alerts, onViewAlert }: RecentAlertsProps) {
 export default function AOIDetailsPage() {
   const router = useRouter()
   const params = useParams()
-  const isAuthenticated = useIsAuthenticated()
+  const isAuthenticated = !!useUser()
   const [isClient, setIsClient] = useState(false)
 
   // Mark when we're on the client side

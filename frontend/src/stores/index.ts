@@ -4,13 +4,13 @@
  */
 
 // Import stores for internal use
-import { useAuthStore } from './auth'
+import { useAuth, useUser, useAuthLoading, useAuthInitialized } from './auth-store'
 import { useAOIStore } from './aoi'
 import { useAnalysisStore, cleanupAnalysisStore } from './analysis'
 import { useAlertStore } from './alerts'
 
 // Store exports
-export { useAuthStore, useUser, useIsAuthenticated, useAuthToken, useAuthLoading, useAuthError } from './auth'
+export { useAuth, useUser, useAuthLoading, useAuthInitialized } from './auth-store'
 export { useAOIStore, useAOIs, useSelectedAOI, useAOILoading, useAOIError } from './aoi'
 export { 
   useAnalysisStore, 
@@ -35,7 +35,7 @@ export {
 
 // Combined store hook for accessing all stores
 export const useStores = () => ({
-  auth: useAuthStore(),
+  auth: useAuth(),
   aoi: useAOIStore(),
   analysis: useAnalysisStore(),
   alerts: useAlertStore(),
@@ -51,10 +51,10 @@ export const cleanupStores = () => {
 export const initializeStores = async () => {
   try {
     // Initialize auth store (check for existing token)
-    await useAuthStore.getState().initializeAuth?.()
+    await useAuth.getState().initialize?.()
     
     // Fetch system capabilities if authenticated
-    if (useAuthStore.getState().isAuthenticated) {
+    if (useAuth.getState().user) {
       await useAnalysisStore.getState().fetchCapabilities()
       await useAnalysisStore.getState().fetchSystemStatus()
     }
@@ -66,7 +66,7 @@ export const initializeStores = async () => {
 // Store reset function (useful for logout)
 export const resetStores = () => {
   // Reset auth store (handled by logout)
-  useAuthStore.getState().logout()
+  useAuth.getState().signOut()
   
   // Reset other stores
   useAOIStore.setState({
@@ -103,7 +103,7 @@ export const hydrateStores = (serverState?: any) => {
   if (serverState) {
     // Hydrate stores with server state if using SSR
     if (serverState.auth) {
-      useAuthStore.setState(serverState.auth)
+      useAuth.setState(serverState.auth)
     }
     // Add other store hydrations as needed
   }
@@ -123,10 +123,12 @@ export const handleStoreError = (error: any, storeName: string) => {
 // Store subscribers for cross-store communication
 export const setupStoreSubscribers = () => {
   // Subscribe to auth changes and reset other stores on logout
-  let previousIsAuthenticated = useAuthStore.getState().isAuthenticated
+  let previousUser = useAuth.getState().user
   
-  useAuthStore.subscribe((state) => {
-    const currentIsAuthenticated = state.isAuthenticated
+  useAuth.subscribe((state) => {
+    const currentUser = state.user
+    const currentIsAuthenticated = !!currentUser
+    const previousIsAuthenticated = !!previousUser
     
     if (previousIsAuthenticated !== currentIsAuthenticated) {
       if (!currentIsAuthenticated) {
@@ -160,7 +162,7 @@ export const setupStoreSubscribers = () => {
         initializeStores()
       }
       
-      previousIsAuthenticated = currentIsAuthenticated
+      previousUser = currentUser
     }
   })
   
@@ -208,7 +210,7 @@ export const setupStoreSubscribers = () => {
 }
 
 // Types for store composition
-export type AuthStore = ReturnType<typeof useAuthStore>
+export type AuthStore = ReturnType<typeof useAuth>
 export type AOIStore = ReturnType<typeof useAOIStore>
 export type AnalysisStore = ReturnType<typeof useAnalysisStore>
 export type AlertStore = ReturnType<typeof useAlertStore>

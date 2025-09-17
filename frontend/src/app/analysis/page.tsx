@@ -7,7 +7,8 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useIsAuthenticated } from '@/stores/auth'
+import { useUser } from '@/stores/auth-store'
+import { ProtectedRoute } from '@/components/auth/AuthProvider'
 import {
   Play,
   Pause,
@@ -158,7 +159,7 @@ function AnalysisCard({ analysis, onView, onCancel, onRetry, onDelete }: Analysi
 export default function AnalysisListPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const isAuthenticated = useIsAuthenticated()
+  const isAuthenticated = !!useUser()
   const [isClient, setIsClient] = useState(false)
 
   // Mark when we're on the client side

@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   env: {
     // Supabase configuration
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -11,10 +10,8 @@ const nextConfig = {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
   },
 
-  // Enable server components debug info
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/auth-helpers-nextjs'],
-  },
+  // External packages
+  serverExternalPackages: ['@supabase/auth-helpers-nextjs'],
 
   // Image configuration for external images
   images: {
