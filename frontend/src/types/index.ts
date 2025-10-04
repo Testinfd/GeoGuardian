@@ -567,3 +567,142 @@ export type UseFormReturn<T> = {
   setFieldError: (field: keyof T, error: string) => void
   clearErrors: () => void
 }
+
+// =============================================================================
+// Advanced Features Types (October 2025)
+// =============================================================================
+
+// Temporal Analysis Types
+export type TemporalAnalysisRequest = {
+  aoi_id: string
+  index_name: string
+  lookback_days?: number
+  critical_threshold?: number
+}
+
+export type TrendAnalysis = {
+  direction: 'increasing' | 'decreasing' | 'stable'
+  slope: number
+  r_squared: number
+  p_value: number
+  confidence: number
+}
+
+export type VelocityAnalysis = {
+  average_velocity: number
+  current_velocity: number
+  acceleration: number
+  is_accelerating: boolean
+  days_to_critical?: number
+  severity: 'stable' | 'slow_improvement' | 'slow_degradation' | 'moderate_improvement' | 'moderate_degradation' | 'rapid_improvement' | 'rapid_degradation'
+}
+
+export type Anomaly = {
+  index: number
+  date: string
+  value: number
+  z_score: number
+  type: 'spike' | 'drop'
+  severity: 'moderate' | 'high'
+}
+
+export type SeasonalPattern = {
+  seasonal: boolean
+  confidence: number
+  period_days?: number
+  amplitude: number
+  coefficient_of_variation?: number
+}
+
+export type TimeSeriesPoint = {
+  date: string
+  value: number
+  quality_score: number
+}
+
+export type TemporalAnalysisResponse = {
+  aoi_id: string
+  index_name: string
+  periods_analyzed: number
+  trend: TrendAnalysis
+  velocity: VelocityAnalysis
+  anomalies: Anomaly[]
+  seasonal_pattern: SeasonalPattern
+  next_period_forecast: number
+  time_series: TimeSeriesPoint[]
+  interpretation: string
+  visualization_url?: string
+}
+
+// Hotspot Analysis Types
+export type HotspotAnalysisRequest = {
+  aoi_id: string
+  geojson: GeoJSONPolygon
+  date_range_days?: number
+  grid_size?: number
+  threshold_percentile?: number
+}
+
+export type Hotspot = {
+  grid_position: { row: number; col: number }
+  intensity: number
+  max_intensity: number
+  pixels_affected: number
+  severity: 'low' | 'moderate' | 'high' | 'critical'
+}
+
+export type HotspotAnalysisResponse = {
+  aoi_id: string
+  total_hotspots: number
+  hotspots: Hotspot[]
+  distribution: 'none' | 'isolated' | 'clustered' | 'scattered' | 'dispersed'
+  largest_hotspot?: Hotspot
+  coverage_percent: number
+  visualization_url?: string
+}
+
+// Alert Prioritization Types
+export type AlertPrioritizationRequest = {
+  alert_ids?: string[]
+  limit?: number
+  min_priority_score?: number
+}
+
+export type PriorityFactors = {
+  magnitude: number
+  confidence: number
+  importance: number
+  velocity: number
+  novelty: number
+}
+
+export type PrioritizedAlert = {
+  alert_id: string
+  aoi_id: string
+  priority_score: number
+  priority_level: 'low' | 'medium' | 'high' | 'critical'
+  urgency_level: 'routine' | 'moderate' | 'urgent' | 'immediate'
+  factors: PriorityFactors
+  recommended_action: string
+}
+
+export type AlertPrioritizationResponse = {
+  total_alerts: number
+  prioritized_alerts: PrioritizedAlert[]
+}
+
+// Visualization Types
+export type VisualizationRequest = {
+  aoi_id: string
+  geojson: GeoJSONPolygon
+  visualization_type: 'heatmap' | 'comparison' | 'multi_index'
+  date_range_days?: number
+  indices?: string[]
+}
+
+export type VisualizationResponse = {
+  aoi_id: string
+  visualization_type: string
+  visualization_url: string
+  metadata: Record<string, any>
+}

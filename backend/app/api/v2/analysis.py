@@ -17,7 +17,11 @@ from ...core.satellite_data import SentinelDataFetcher, FetchConfig
 from ...core.asset_manager import AssetManager
 from ...algorithms.cusum import CUSUMDetector
 from ...algorithms.ewma import EWMADetector
+from ...algorithms.temporal_analyzer import TemporalIndexAnalyzer, ChangeHotspotDetector
+from ...algorithms.alert_prioritizer import AlertPrioritizer
+from ...algorithms.visualization import ChangeVisualizer
 from ...core.database import get_supabase
+from ...core.historical_data import get_historical_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -686,6 +690,421 @@ async def get_analysis_results():
             status_code=500,
             detail=f"Failed to retrieve analysis results: {str(e)}"
         )
+
+# ============================================================================
+# NEW ENDPOINTS: Advanced Features (No ML Training Required)
+# ============================================================================
+
+class TemporalAnalysisRequest(BaseModel):
+    """Request for temporal trend analysis"""
+    aoi_id: str = Field(..., description="Area of Interest ID")
+    index_name: str = Field("ndvi", description="Spectral index to analyze")
+    lookback_days: int = Field(365, description="Number of days of historical data to analyze")
+    critical_threshold: Optional[float] = Field(None, description="Critical threshold for prediction")
+
+
+class TemporalAnalysisResponse(BaseModel):
+    """Response from temporal analysis"""
+    aoi_id: str
+    index_name: str
+    periods_analyzed: int
+    trend: Dict[str, Any]
+    velocity: Dict[str, Any]
+    anomalies: List[Dict[str, Any]]
+    seasonal_pattern: Dict[str, Any]
+    next_period_forecast: float
+    time_series: List[Dict[str, Any]]
+    interpretation: str
+    visualization_url: Optional[str] = None
+
+
+@router.post("/temporal-analysis", response_model=TemporalAnalysisResponse)
+async def perform_temporal_analysis(request: TemporalAnalysisRequest):
+    """
+    Perform multi-temporal analysis to detect trends, velocity, and acceleration
+    
+    Features:
+    - Trend detection (increasing/decreasing/stable)
+    - Velocity and acceleration calculation
+    - Anomaly detection
+    - Seasonal pattern identification
+    - Next period forecast
+    - Time to critical threshold prediction
+    """
+    
+    try:
+        logger.info(f"Starting temporal analysis for AOI: {request.aoi_id}, index: {request.index_name}")
+        
+        # Get historical data
+        historical_manager = get_historical_manager()
+        
+        start_date = datetime.now() - timedelta(days=request.lookback_days)
+        historical_records = historical_manager.get_historical_indices(
+            aoi_id=request.aoi_id,
+            start_date=start_date,
+            min_quality=0.6
+        )
+        
+        if len(historical_records) < 3:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient historical data. Found {len(historical_records)} records, need at least 3."
+            )
+        
+        # Perform temporal analysis
+        analyzer = TemporalIndexAnalyzer()
+        result = await analyzer.analyze_temporal_trends(
+            time_series_data=historical_records,
+            index_name=request.index_name,
+            critical_threshold=request.critical_threshold
+        )
+        
+        # Generate temporal visualization
+        visualizer = ChangeVisualizer()
+        viz_url = visualizer.generate_temporal_chart(
+            time_series=result.time_series,
+            index_name=request.index_name,
+            show_trend=True,
+            show_forecast=True
+        )
+        
+        return TemporalAnalysisResponse(
+            aoi_id=request.aoi_id,
+            index_name=result.index_name,
+            periods_analyzed=result.periods_analyzed,
+            trend={
+                'direction': result.trend.direction,
+                'slope': result.trend.slope,
+                'r_squared': result.trend.r_squared,
+                'p_value': result.trend.p_value,
+                'confidence': result.trend.confidence
+            },
+            velocity={
+                'average_velocity': result.velocity.average_velocity,
+                'current_velocity': result.velocity.current_velocity,
+                'acceleration': result.velocity.acceleration,
+                'is_accelerating': result.velocity.is_accelerating,
+                'days_to_critical': result.velocity.days_to_critical,
+                'severity': result.velocity.severity
+            },
+            anomalies=result.anomalies,
+            seasonal_pattern=result.seasonal_pattern,
+            next_period_forecast=result.next_period_forecast,
+            time_series=result.time_series,
+            interpretation=result.interpretation,
+            visualization_url=viz_url
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Temporal analysis failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Temporal analysis failed: {str(e)}"
+        )
+
+
+class HotspotAnalysisRequest(BaseModel):
+    """Request for hotspot detection"""
+    aoi_id: str = Field(..., description="Area of Interest ID")
+    geojson: Dict[str, Any] = Field(..., description="GeoJSON geometry")
+    date_range_days: int = Field(30, description="Date range for comparison")
+    grid_size: int = Field(10, description="Grid size for hotspot detection")
+    threshold_percentile: float = Field(75, description="Percentile threshold for hotspots")
+
+
+class HotspotAnalysisResponse(BaseModel):
+    """Response from hotspot analysis"""
+    aoi_id: str
+    total_hotspots: int
+    hotspots: List[Dict[str, Any]]
+    distribution: str
+    largest_hotspot: Optional[Dict[str, Any]]
+    coverage_percent: float
+    visualization_url: Optional[str] = None
+
+
+@router.post("/hotspot-analysis", response_model=HotspotAnalysisResponse)
+async def perform_hotspot_analysis(request: HotspotAnalysisRequest):
+    """
+    Detect spatial hotspots of change within an AOI
+    
+    Features:
+    - Grid-based spatial analysis
+    - Intensity classification
+    - Distribution pattern detection
+    - Hotspot visualization overlay
+    """
+    
+    try:
+        logger.info(f"Starting hotspot analysis for AOI: {request.aoi_id}")
+        
+        # Fetch satellite imagery
+        satellite_fetcher = SentinelDataFetcher(FetchConfig(max_cloud_coverage=0.3))
+        
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=request.date_range_days)
+        
+        # Get before and after images
+        after_image = await satellite_fetcher.fetch_image(
+            request.geojson,
+            end_date - timedelta(days=5),
+            end_date
+        )
+        
+        before_image = await satellite_fetcher.fetch_image(
+            request.geojson,
+            start_date,
+            start_date + timedelta(days=5)
+        )
+        
+        if after_image is None or before_image is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not retrieve sufficient satellite imagery for hotspot analysis"
+            )
+        
+        # Perform hotspot detection
+        detector = ChangeHotspotDetector()
+        hotspot_result = detector.detect_change_hotspots(
+            before_image=before_image.data,
+            after_image=after_image.data,
+            grid_size=request.grid_size,
+            threshold_percentile=request.threshold_percentile
+        )
+        
+        # Generate visualization
+        visualizer = ChangeVisualizer()
+        viz_url = visualizer.generate_hotspot_overlay(
+            base_image=after_image.data,
+            hotspots=hotspot_result['hotspots'],
+            grid_size=request.grid_size
+        )
+        
+        return HotspotAnalysisResponse(
+            aoi_id=request.aoi_id,
+            total_hotspots=hotspot_result['total_hotspots'],
+            hotspots=hotspot_result['hotspots'],
+            distribution=hotspot_result['distribution'],
+            largest_hotspot=hotspot_result['largest_hotspot'],
+            coverage_percent=hotspot_result['coverage_percent'],
+            visualization_url=viz_url
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Hotspot analysis failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Hotspot analysis failed: {str(e)}"
+        )
+
+
+class AlertPrioritizationRequest(BaseModel):
+    """Request for alert prioritization"""
+    alert_ids: Optional[List[str]] = Field(None, description="Specific alert IDs to prioritize")
+    limit: Optional[int] = Field(50, description="Maximum number of results")
+    min_priority_score: Optional[float] = Field(None, description="Minimum priority score filter")
+
+
+class AlertPrioritizationResponse(BaseModel):
+    """Response from alert prioritization"""
+    total_alerts: int
+    prioritized_alerts: List[Dict[str, Any]]
+
+
+@router.post("/alerts/prioritize", response_model=AlertPrioritizationResponse)
+async def prioritize_alerts(request: AlertPrioritizationRequest):
+    """
+    Intelligently prioritize alerts based on multiple factors
+    
+    Features:
+    - Multi-factor scoring (magnitude, confidence, importance, velocity, novelty)
+    - Priority level classification
+    - Recommended actions
+    - Urgency assessment
+    """
+    
+    try:
+        logger.info("Starting alert prioritization")
+        
+        # Fetch alerts
+        supabase = get_supabase()
+        query = supabase.table('alerts').select('*')
+        
+        if request.alert_ids:
+            query = query.in_('id', request.alert_ids)
+        
+        query = query.order('created_at', desc=True).limit(request.limit or 50)
+        
+        response = query.execute()
+        alerts = response.data if response.data else []
+        
+        if not alerts:
+            return AlertPrioritizationResponse(
+                total_alerts=0,
+                prioritized_alerts=[]
+            )
+        
+        # Prioritize alerts
+        prioritizer = AlertPrioritizer()
+        prioritized = prioritizer.prioritize_alerts(
+            alerts=alerts,
+            limit=request.limit
+        )
+        
+        # Filter by minimum score if specified
+        if request.min_priority_score:
+            prioritized = [p for p in prioritized if p.priority_score >= request.min_priority_score]
+        
+        # Convert to response format
+        prioritized_data = [
+            {
+                'alert_id': p.alert_id,
+                'aoi_id': p.aoi_id,
+                'priority_score': p.priority_score,
+                'priority_level': p.priority_level,
+                'urgency_level': p.urgency_level,
+                'factors': {
+                    'magnitude': p.factors.magnitude,
+                    'confidence': p.factors.confidence,
+                    'importance': p.factors.importance,
+                    'velocity': p.factors.velocity,
+                    'novelty': p.factors.novelty
+                },
+                'recommended_action': p.recommended_action
+            }
+            for p in prioritized
+        ]
+        
+        return AlertPrioritizationResponse(
+            total_alerts=len(prioritized_data),
+            prioritized_alerts=prioritized_data
+        )
+        
+    except Exception as e:
+        logger.error(f"Alert prioritization failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Alert prioritization failed: {str(e)}"
+        )
+
+
+class VisualizationRequest(BaseModel):
+    """Request for advanced visualization"""
+    aoi_id: str = Field(..., description="Area of Interest ID")
+    geojson: Dict[str, Any] = Field(..., description="GeoJSON geometry")
+    visualization_type: str = Field(..., description="Type of visualization: heatmap, comparison, multi_index")
+    date_range_days: int = Field(30, description="Date range for comparison")
+    indices: Optional[List[str]] = Field(None, description="Specific indices to visualize")
+
+
+class VisualizationResponse(BaseModel):
+    """Response from visualization generation"""
+    aoi_id: str
+    visualization_type: str
+    visualization_url: str
+    metadata: Dict[str, Any]
+
+
+@router.post("/visualize", response_model=VisualizationResponse)
+async def generate_visualization(request: VisualizationRequest):
+    """
+    Generate advanced visualizations for change detection
+    
+    Supported types:
+    - heatmap: Change intensity heat map
+    - comparison: Side-by-side before/after comparison
+    - multi_index: Multi-panel spectral index comparison
+    """
+    
+    try:
+        logger.info(f"Generating {request.visualization_type} visualization for AOI: {request.aoi_id}")
+        
+        # Fetch satellite imagery
+        satellite_fetcher = SentinelDataFetcher(FetchConfig(max_cloud_coverage=0.3))
+        spectral_analyzer = SpectralAnalyzer()
+        
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=request.date_range_days)
+        
+        # Get images
+        after_image = await satellite_fetcher.fetch_image(
+            request.geojson,
+            end_date - timedelta(days=5),
+            end_date
+        )
+        
+        before_image = await satellite_fetcher.fetch_image(
+            request.geojson,
+            start_date,
+            start_date + timedelta(days=5)
+        )
+        
+        if after_image is None or before_image is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not retrieve sufficient satellite imagery"
+            )
+        
+        # Generate visualization based on type
+        visualizer = ChangeVisualizer()
+        
+        if request.visualization_type == 'heatmap':
+            viz_url = visualizer.generate_change_heatmap(
+                before_image=before_image.data,
+                after_image=after_image.data,
+                title=f'Change Heat Map - AOI {request.aoi_id}'
+            )
+            metadata = {'type': 'heatmap'}
+            
+        elif request.visualization_type == 'comparison':
+            change_map = after_image.data - before_image.data
+            viz_url = visualizer.generate_comparison_view(
+                before_image=before_image.data,
+                after_image=after_image.data,
+                change_map=change_map
+            )
+            metadata = {'type': 'comparison'}
+            
+        elif request.visualization_type == 'multi_index':
+            # Calculate spectral indices for both images
+            before_features = spectral_analyzer.extract_all_features(before_image.data)
+            after_features = spectral_analyzer.extract_all_features(after_image.data)
+            
+            indices_to_show = request.indices or ['ndvi', 'ndwi', 'ndbi', 'evi']
+            
+            viz_url = visualizer.generate_multi_index_heatmap(
+                indices_before=before_features['indices'],
+                indices_after=after_features['indices'],
+                index_names=indices_to_show
+            )
+            metadata = {'type': 'multi_index', 'indices': indices_to_show}
+            
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported visualization type: {request.visualization_type}"
+            )
+        
+        return VisualizationResponse(
+            aoi_id=request.aoi_id,
+            visualization_type=request.visualization_type,
+            visualization_url=viz_url,
+            metadata=metadata
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Visualization generation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Visualization generation failed: {str(e)}"
+        )
+
 
 # Remove old functions
 # async def generate_analysis_visualizations(...) - Replaced by AssetManager
