@@ -7,8 +7,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Search, Filter, Bell, AlertTriangle, CheckCircle, XCircle, Eye, MoreVertical } from 'lucide-react'
+import { ProtectedRoute } from '@/components/auth/AuthProvider'
 import { useAlertStore } from '@/stores/alerts'
 import { useAOIStore } from '@/stores/aoi'
+import { FusionBadge, CategoryBadge } from '@/components/alerts'
 import type { Alert, AlertPriority, AlertStatus } from '@/types'
 import { ALERT_PRIORITY, ALERT_STATUS } from '@/utils/constants'
 
@@ -103,10 +105,11 @@ const AlertsPage: React.FC = () => {
   }
   
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <Bell className="h-8 w-8 text-primary-600" />
@@ -376,14 +379,15 @@ const AlertsPage: React.FC = () => {
         )}
       </div>
       
-      {/* Alert Details Modal */}
-      {selectedAlert && (
-        <AlertDetailsModal
-          alert={selectedAlert}
-          onClose={() => setSelectedAlert(null)}
-        />
-      )}
-    </div>
+        {/* Alert Details Modal */}
+        {selectedAlert && (
+          <AlertDetailsModal
+            alert={selectedAlert}
+            onClose={() => setSelectedAlert(null)}
+          />
+        )}
+      </div>
+    </ProtectedRoute>
   )
 }
 
@@ -451,6 +455,17 @@ const AlertCard: React.FC<AlertCardProps> = ({
                 <span>Area: {alert.affected_area_km2.toFixed(2)} km²</span>
                 <span>{formatDate(alert.detection_date)}</span>
               </div>
+              
+              {/* Fusion Analysis Badges */}
+              {alert.fusion_analysis && alert.fusion_analysis.change_detected && (
+                <div className="flex items-center gap-2 mt-3">
+                  <CategoryBadge category={alert.fusion_analysis.category} size="sm" />
+                  <FusionBadge 
+                    riskLevel={alert.fusion_analysis.risk_level}
+                    riskScore={alert.fusion_analysis.composite_risk_score}
+                  />
+                </div>
+              )}
             </div>
           </div>
           
@@ -501,6 +516,17 @@ const AlertCard: React.FC<AlertCardProps> = ({
         </h3>
         
         <p className="text-sm text-gray-600 mb-3 line-clamp-2">{alert.description}</p>
+        
+        {/* Fusion Analysis Badges */}
+        {alert.fusion_analysis && alert.fusion_analysis.change_detected && (
+          <div className="flex flex-col gap-2 mb-3">
+            <CategoryBadge category={alert.fusion_analysis.category} size="sm" />
+            <FusionBadge 
+              riskLevel={alert.fusion_analysis.risk_level}
+              riskScore={alert.fusion_analysis.composite_risk_score}
+            />
+          </div>
+        )}
         
         <div className="space-y-2 text-sm text-gray-500">
           <div className="flex justify-between">

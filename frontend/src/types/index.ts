@@ -256,6 +256,23 @@ export type Alert = {
   created_at: string
   updated_at: string
   resolved_at?: string
+  // Multi-Sensor Fusion Analysis
+  fusion_analysis?: {
+    composite_risk_score: number      // 0.0 to 1.0
+    risk_level: 'low' | 'medium' | 'high' | 'critical'
+    category: string                  // e.g., 'illegal_construction', 'deforestation'
+    confidence: number                // 0.0 to 1.0
+    primary_indicators: string[]      // ['ndvi', 'ndbi', ...]
+    supporting_evidence: string[]     // Detailed change descriptions
+    seasonal_likelihood: number       // 0.0 to 1.0
+    recommendation: string            // Action recommendation
+    change_detected: boolean
+    details: {
+      index_changes: Record<string, number>
+      significant_changes: string[]
+      total_indicators: number
+    }
+  }
 }
 
 export type AlertVerificationRequest = {

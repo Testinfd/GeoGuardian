@@ -28,7 +28,6 @@ import {
   RotateCcw,
   BarChart3
 } from 'lucide-react'
-import { Navigation } from '@/components/layout'
 import { Button, Card, Input, Loading, Badge, Modal, Alert } from '@/components/ui'
 import { useAnalysisStore } from '@/stores/analysis'
 import { useAOIStore } from '@/stores/aoi'
@@ -271,10 +270,8 @@ export default function AnalysisListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <ProtectedRoute>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="px-4 sm:px-0 mb-6">
           <div className="flex items-center justify-between">
@@ -465,9 +462,8 @@ export default function AnalysisListPage() {
             ))}
           </div>
         )}
-      </main>
 
-      {/* Delete Confirmation Modal */}
+        {/* Delete Confirmation Modal */}
       <Modal
         isOpen={!!deleteConfirmAnalysis}
         onClose={() => setDeleteConfirmAnalysis(null)}
@@ -496,6 +492,7 @@ export default function AnalysisListPage() {
           </div>
         </div>
       </Modal>
-    </div>
+      </div>
+    </ProtectedRoute>
   )
 }

@@ -24,7 +24,6 @@ import {
   Trash2,
   AlertTriangle
 } from 'lucide-react'
-import { Navigation } from '@/components/layout'
 import { Button, Card, Input, Loading, Badge, Modal } from '@/components/ui'
 import { SentinelMap } from '@/components/map'
 import { useAOIStore } from '@/stores/aoi'
@@ -255,10 +254,8 @@ export default function AOIListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <ProtectedRoute>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="px-4 sm:px-0 mb-6">
           <div className="flex items-center justify-between">
@@ -443,9 +440,8 @@ export default function AOIListPage() {
             )}
           </>
         )}
-      </main>
 
-      {/* Delete Confirmation Modal */}
+        {/* Delete Confirmation Modal */}
       <Modal
         isOpen={!!deleteConfirmAOI}
         onClose={() => setDeleteConfirmAOI(null)}
@@ -474,6 +470,7 @@ export default function AOIListPage() {
           </div>
         </div>
       </Modal>
-    </div>
+      </div>
+    </ProtectedRoute>
   )
 }

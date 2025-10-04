@@ -24,6 +24,7 @@ from ..algorithms.ewma import EWMADetector, VegetationEWMADetector, WaterQuality
 from ..algorithms.cusum import CUSUMDetector, ConstructionCUSUMDetector, DeforestationCUSUMDetector
 from .vedgesat_wrapper import VedgeSatWrapper
 from .spectral_analyzer import SpectralAnalyzer
+from .fusion_engine import MultiSensorFusion, FusionResult
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ class AdvancedAnalysisEngine:
         
         # Initialize specialized components
         self.spectral_analyzer = SpectralAnalyzer()
+        self.fusion_engine = MultiSensorFusion()  # NEW: Multi-Sensor Fusion
         
         if self.config.enable_vedgesat:
             try:
@@ -79,7 +81,7 @@ class AdvancedAnalysisEngine:
         else:
             self.vedgesat_wrapper = None
         
-        logger.info("AdvancedAnalysisEngine initialized")
+        logger.info("AdvancedAnalysisEngine initialized with Multi-Sensor Fusion")
     
     def analyze_environmental_change(
         self, 
@@ -130,6 +132,19 @@ class AdvancedAnalysisEngine:
             
             # Get or calculate baseline statistics
             baseline_stats = baseline_data or self._calculate_baseline_stats(before_features)
+            
+            # NEW: Apply Multi-Sensor Fusion for intelligent risk assessment
+            fusion_result = None
+            if analysis_type == 'comprehensive':
+                try:
+                    logger.debug("Applying multi-sensor fusion analysis...")
+                    fusion_result = self._apply_fusion_analysis(
+                        before_features, after_features, baseline_data
+                    )
+                    results['fusion_analysis'] = fusion_result
+                    results['algorithms_used'].append('multi_sensor_fusion')
+                except Exception as e:
+                    logger.warning(f"Fusion analysis failed: {e}")
             
             # Execute analysis based on type
             if analysis_type in ['comprehensive', 'vegetation']:
@@ -735,15 +750,96 @@ class AdvancedAnalysisEngine:
 
         return overlay
     
+    def _apply_fusion_analysis(
+        self,
+        before_features: Dict,
+        after_features: Dict,
+        historical_data: Optional[List[Dict]] = None
+    ) -> Dict:
+        """
+        Apply Multi-Sensor Fusion for intelligent change classification
+        
+        Args:
+            before_features: Spectral features from previous image
+            after_features: Spectral features from current image
+            historical_data: Optional historical spectral index data
+            
+        Returns:
+            Fusion analysis results with risk scores and classifications
+        """
+        
+        logger.debug("Running multi-sensor fusion analysis...")
+        
+        try:
+            # Extract mean spectral indices from spatial data
+            current_indices = {}
+            previous_indices = {}
+            
+            for index_name, index_data in after_features['indices'].items():
+                if isinstance(index_data, np.ndarray):
+                    current_indices[index_name] = float(np.nanmean(index_data))
+                else:
+                    current_indices[index_name] = float(index_data)
+            
+            for index_name, index_data in before_features['indices'].items():
+                if isinstance(index_data, np.ndarray):
+                    previous_indices[index_name] = float(np.nanmean(index_data))
+                else:
+                    previous_indices[index_name] = float(index_data)
+            
+            # Apply fusion algorithm
+            fusion_result = self.fusion_engine.analyze(
+                current_indices=current_indices,
+                previous_indices=previous_indices,
+                historical_indices=historical_data,
+                aoi_metadata=None  # Can add AOI metadata later
+            )
+            
+            # Convert FusionResult to dictionary
+            return {
+                'composite_risk_score': fusion_result.composite_risk_score,
+                'risk_level': fusion_result.risk_level,
+                'category': fusion_result.category.value,
+                'confidence': fusion_result.confidence,
+                'primary_indicators': fusion_result.primary_indicators,
+                'supporting_evidence': fusion_result.supporting_evidence,
+                'seasonal_likelihood': fusion_result.seasonal_likelihood,
+                'recommendation': fusion_result.recommendation,
+                'change_detected': fusion_result.composite_risk_score > 0.3,
+                'details': fusion_result.details
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in fusion analysis: {e}")
+            return {
+                'error': str(e),
+                'change_detected': False,
+                'confidence': 0.0
+            }
+    
     def _generate_analysis_summary(self, results: Dict) -> str:
         """Generate human-readable analysis summary"""
+        summary_parts = []
+        
+        # NEW: Include fusion analysis results if available
+        fusion_analysis = results.get('fusion_analysis')
+        if fusion_analysis and fusion_analysis.get('change_detected'):
+            category = fusion_analysis.get('category', 'unknown').replace('_', ' ').title()
+            risk_level = fusion_analysis.get('risk_level', 'unknown').upper()
+            confidence = fusion_analysis.get('confidence', 0)
+            risk_score = fusion_analysis.get('composite_risk_score', 0)
+            
+            summary_parts.append(
+                f"Multi-Sensor Fusion: {category} detected "
+                f"(Risk: {risk_level}, Score: {risk_score:.2f}, Confidence: {confidence:.1%})"
+            )
+        
         detections = results.get('detections', [])
         detected_changes = [d for d in detections if d.get('change_detected', False)]
         
-        if not detected_changes:
+        if not detected_changes and not summary_parts:
             return "No significant environmental changes detected in the monitored area."
         
-        summary_parts = []
         for detection in detected_changes:
             detection_type = detection.get('type', 'unknown').replace('_', ' ').title()
             confidence = detection.get('confidence', 0)
@@ -759,10 +855,18 @@ class AdvancedAnalysisEngine:
     def _generate_recommendations(self, results: Dict) -> List[str]:
         """Generate actionable recommendations based on analysis results"""
         recommendations = []
+        
+        # NEW: Include fusion-based recommendations (highest priority)
+        fusion_analysis = results.get('fusion_analysis')
+        if fusion_analysis and fusion_analysis.get('change_detected'):
+            fusion_recommendation = fusion_analysis.get('recommendation')
+            if fusion_recommendation:
+                recommendations.append(f"[FUSION] {fusion_recommendation}")
+        
         detections = results.get('detections', [])
         detected_changes = [d for d in detections if d.get('change_detected', False)]
         
-        if not detected_changes:
+        if not detected_changes and not fusion_analysis:
             recommendations.extend([
                 "Continue regular monitoring of the area",
                 "Consider expanding monitoring to adjacent areas",

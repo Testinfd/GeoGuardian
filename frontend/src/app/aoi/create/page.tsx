@@ -19,9 +19,8 @@ import {
   Lock,
   AlertCircle
 } from 'lucide-react'
-import { Navigation } from '@/components/layout'
 import { Button, Card, Input, Loading, Badge, Alert } from '@/components/ui'
-import { SentinelMap } from '@/components/map'
+import { InteractiveAOIMap } from '@/components/map'
 import { useAOIStore } from '@/stores/aoi'
 import type { GeoJSONPolygon, CreateAOIRequest } from '@/types'
 import { MAP_CONFIG } from '@/utils/constants'
@@ -82,7 +81,6 @@ export default function CreateAOIPage() {
     is_public: false,
   })
   const [tagInput, setTagInput] = useState('')
-  const [isDrawingMode, setIsDrawingMode] = useState(true)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
 
   // Calculate polygon area (approximate)
@@ -119,7 +117,6 @@ export default function CreateAOIPage() {
   // Handlers
   const handlePolygonCreated = (polygon: GeoJSONPolygon) => {
     setDrawnPolygon(polygon)
-    setIsDrawingMode(false)
     setCurrentStep(2)
   }
 
@@ -155,7 +152,6 @@ export default function CreateAOIPage() {
 
   const handleRedrawPolygon = () => {
     setDrawnPolygon(null)
-    setIsDrawingMode(true)
     setCurrentStep(1)
   }
 
@@ -187,10 +183,8 @@ export default function CreateAOIPage() {
   const polygonArea = drawnPolygon ? calculatePolygonArea(drawnPolygon) : 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <ProtectedRoute>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="px-4 sm:px-0 mb-6">
           <div className="flex items-center mb-4">
@@ -251,11 +245,10 @@ export default function CreateAOIPage() {
                 )}
               </div>
 
-              <SentinelMap
+              <InteractiveAOIMap
                 height="500px"
-                center={MAP_CONFIG.DEFAULT_CENTER}
+                center={[MAP_CONFIG.DEFAULT_CENTER.lat, MAP_CONFIG.DEFAULT_CENTER.lng]}
                 zoom={MAP_CONFIG.DEFAULT_ZOOM}
-                drawingMode={isDrawingMode}
                 onPolygonCreated={handlePolygonCreated}
                 aois={drawnPolygon ? [{
                   id: 'preview',
@@ -266,14 +259,14 @@ export default function CreateAOIPage() {
                 }] : []}
               />
 
-              {isDrawingMode && (
+              {!drawnPolygon && (
                 <Alert className="mt-4">
                   <Info className="w-4 h-4" />
                   <div>
                     <h4 className="font-medium">Drawing Instructions</h4>
                     <p className="text-sm mt-1">
-                      Use the polygon tool in the toolbar to draw your area of interest. 
-                      Click to add points, and double-click to finish.
+                      Click the "Draw AOI" button on the map, then click to add points to your polygon. 
+                      Click near the first point to close the polygon, or use the "Complete" button when done.
                     </p>
                   </div>
                 </Alert>
@@ -455,7 +448,7 @@ export default function CreateAOIPage() {
             </Card>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </ProtectedRoute>
   )
 }

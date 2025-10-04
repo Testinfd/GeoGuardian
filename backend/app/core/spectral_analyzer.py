@@ -100,6 +100,30 @@ class SpectralAnalyzer:
                 indices['bsi'] = ((bands['swir_1'] + bands['red']) - (bands['nir'] + bands['blue'])) / \
                                 ((bands['swir_1'] + bands['red']) + (bands['nir'] + bands['blue']) + self.epsilon)
             
+            # NDBI (Normalized Difference Built-up Index) - Urban/construction detection
+            if 'swir_1' in bands and 'nir' in bands:
+                indices['ndbi'] = (bands['swir_1'] - bands['nir']) / \
+                                 (bands['swir_1'] + bands['nir'] + self.epsilon)
+            
+            # BAI (Built-up Area Index) - Alternative urban detection
+            if 'red' in bands and 'nir' in bands:
+                indices['bai'] = 1.0 / ((0.1 - bands['red']) ** 2 + (0.06 - bands['nir']) ** 2 + self.epsilon)
+            
+            # SAVI (Soil Adjusted Vegetation Index) - Better for areas with exposed soil
+            if 'nir' in bands and 'red' in bands:
+                L = 0.5  # Soil brightness correction factor
+                indices['savi'] = ((bands['nir'] - bands['red']) / \
+                                  (bands['nir'] + bands['red'] + L + self.epsilon)) * (1 + L)
+            
+            # NBRI (Normalized Burn Ratio Index) - Burned areas and fire damage
+            if 'nir' in bands and 'swir_2' in bands:
+                indices['nbri'] = (bands['nir'] - bands['swir_2']) / \
+                                 (bands['nir'] + bands['swir_2'] + self.epsilon)
+            
+            # Thermal Proxy (using SWIR1 as thermal indicator)
+            if 'swir_1' in bands:
+                indices['thermal_proxy'] = bands['swir_1']
+            
             # Specialized indices
             if 'red_edge_1' in bands and 'red' in bands:
                 indices['algae_index'] = bands['red_edge_1'] / (bands['red'] + self.epsilon)

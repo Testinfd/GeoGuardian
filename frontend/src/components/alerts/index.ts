@@ -23,6 +23,11 @@ export {
   useRealTimeNotifications
 } from '../notifications/NotificationSystem'
 
+// Fusion analysis components
+export { FusionBadge } from './FusionBadge'
+export { CategoryBadge } from './CategoryBadge'
+export { FusionDetails } from './FusionDetails'
+
 // Alert card and list components (if we create them)
 // export { AlertCard, AlertList } from './AlertList'
 

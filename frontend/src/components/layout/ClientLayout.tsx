@@ -27,7 +27,7 @@ export function ClientLayout({ children }: ClientLayoutProps) {
       <div className="min-h-screen bg-gray-50">
         {!isAuthPage && user && <Navigation />}
         
-        <main className={!isAuthPage && user ? 'pl-64' : ''}>
+        <main className={!isAuthPage && user ? 'pt-16' : ''}>
           {children}
         </main>
         

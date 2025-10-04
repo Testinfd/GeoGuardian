@@ -7,7 +7,10 @@ import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import { supabase } from './auth'
 
 // API Base Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+// In development, use proxy. In production, use the configured URL.
+const API_BASE_URL = process.env.NODE_ENV === 'production'
+  ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000')
+  : '' // Use relative URLs in development (proxied through Next.js)
 
 class ApiClient {
   private client: AxiosInstance

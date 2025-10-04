@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useAlertStore } from '@/stores/alerts'
 import { useAOIStore } from '@/stores/aoi'
+import { FusionDetails } from '@/components/alerts'
 import type { Alert, VoteType } from '@/types'
 
 interface AlertDetailsPageProps {
@@ -323,6 +324,11 @@ const AlertDetailsPage: React.FC<AlertDetailsPageProps> = ({ params }) => {
                   </div>
                 )}
               </div>
+            )}
+            
+            {/* Fusion Analysis Section */}
+            {alert.fusion_analysis && alert.fusion_analysis.change_detected && (
+              <FusionDetails fusionAnalysis={alert.fusion_analysis} />
             )}
             
             {/* Verification Section */}

@@ -180,20 +180,21 @@ async def get_alert_by_id(
             aoi_id=alert_data['aoi_id'],
             aoi_name=aoi_data.get('name'),
             type=alert_data['type'],
-            severity=alert_data.get('severity', 'medium'),
-            title=alert_data['title'],
-            message=alert_data['message'],
-            confidence=alert_data.get('confidence', 0.0),
-            status=alert_data.get('status', 'active'),
-            coordinates=alert_data.get('coordinates'),
-            affected_area_km2=alert_data.get('affected_area_km2'),
-            detection_algorithm=alert_data.get('detection_algorithm'),
-            satellite_data_source=alert_data.get('satellite_data_source'),
+            confidence=alert_data.get('confidence'),
+            confirmed=alert_data.get('confirmed', False),
+            processing=alert_data.get('processing', True),
             created_at=datetime.fromisoformat(alert_data['created_at'].replace('Z', '+00:00')),
-            updated_at=datetime.fromisoformat(alert_data['updated_at'].replace('Z', '+00:00')),
-            acknowledged_at=datetime.fromisoformat(alert_data['acknowledged_at'].replace('Z', '+00:00')) if alert_data.get('acknowledged_at') else None,
-            acknowledged_by=alert_data.get('acknowledged_by'),
-            metadata=alert_data.get('metadata', {})
+            overall_confidence=alert_data.get('overall_confidence', 0.0),
+            priority_level=alert_data.get('priority_level', 'info'),
+            analysis_type=alert_data.get('analysis_type', 'basic'),
+            algorithms_used=alert_data.get('algorithms_used', []),
+            detections=alert_data.get('detections', []),
+            spectral_indices=alert_data.get('spectral_indices', {}),
+            satellite_metadata=alert_data.get('satellite_metadata', {}),
+            processing_metadata=alert_data.get('processing_metadata', {}),
+            processing_time_seconds=alert_data.get('processing_time_seconds', 0.0),
+            data_quality_score=alert_data.get('data_quality_score', 0.0),
+            gif_url=alert_data.get('gif_url')
         )
         
         logger.info(f"Retrieved alert {alert_id} for user: {current_user.id if current_user else 'anonymous'}")
@@ -361,6 +362,88 @@ async def resolve_alert(
             status_code=500,
             detail=f"Failed to resolve alert: {str(e)}"
         )
+
+@router.get("/aoi/{aoi_id}", response_model=List[EnhancedAlert])
+async def get_alerts_by_aoi(
+    aoi_id: str,
+    current_user: User = Depends(get_current_user_optional),
+    limit: int = 50,
+    offset: int = 0,
+    days_back: int = 30
+):
+    """
+    Get alerts for a specific Area of Interest (AOI)
+
+    This endpoint provides alerts filtered by AOI with support for:
+    - Pagination
+    - Time range filtering
+    - Access control based on AOI ownership
+    """
+
+    try:
+        supabase = get_supabase()
+
+        # Build query with AOI filtering
+        query = supabase.table("alerts").select("""
+            *,
+            aois(name, user_id, is_public)
+        """).eq("aoi_id", aoi_id)
+
+        # Apply access control
+        if current_user:
+            # Show alerts for user's AOIs or public AOIs
+            query = query.or_(f"aois.user_id.eq.{current_user.id},aois.is_public.eq.true")
+        else:
+            # Show only alerts for public AOIs for unauthenticated users
+            query = query.eq("aois.is_public", True)
+
+        # Apply time range filter
+        cutoff_date = datetime.now() - timedelta(days=days_back)
+        query = query.gte("created_at", cutoff_date.isoformat())
+
+        # Apply pagination and ordering
+        query = query.range(offset, offset + limit - 1)
+        query = query.order("created_at", desc=True)
+
+        response = query.execute()
+
+        if response.data is None:
+            logger.warning(f"No alert data returned for AOI {aoi_id}")
+            return []
+
+        # Process alerts into enhanced format
+        enhanced_alerts = []
+        for alert_data in response.data:
+            enhanced_alert = EnhancedAlert(
+                id=alert_data['id'],
+                aoi_id=alert_data['aoi_id'],
+                aoi_name=alert_data.get('aois', {}).get('name') if alert_data.get('aois') else None,
+                type=alert_data['type'],
+                confidence=alert_data.get('confidence'),
+                confirmed=alert_data.get('confirmed', False),
+                processing=alert_data.get('processing', True),
+                created_at=datetime.fromisoformat(alert_data['created_at'].replace('Z', '+00:00')),
+                overall_confidence=alert_data.get('overall_confidence', 0.0),
+                priority_level=alert_data.get('priority_level', 'info'),
+                analysis_type=alert_data.get('analysis_type', 'basic'),
+                algorithms_used=alert_data.get('algorithms_used', []),
+                detections=alert_data.get('detections', []),
+                spectral_indices=alert_data.get('spectral_indices', {}),
+                satellite_metadata=alert_data.get('satellite_metadata', {}),
+                processing_metadata=alert_data.get('processing_metadata', {}),
+                processing_time_seconds=alert_data.get('processing_time_seconds', 0.0),
+                data_quality_score=alert_data.get('data_quality_score', 0.0),
+                gif_url=alert_data.get('gif_url')
+            )
+            enhanced_alerts.append(enhanced_alert)
+
+        logger.info(f"Retrieved {len(enhanced_alerts)} alerts for AOI {aoi_id}, user: {current_user.id if current_user else 'anonymous'}")
+        return enhanced_alerts
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve alerts for AOI {aoi_id}: {str(e)}")
+        # Return empty list instead of raising exception for better UX
+        return []
 
 @router.get("/stats/summary")
 async def get_alert_statistics(

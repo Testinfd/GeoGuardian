@@ -32,7 +32,7 @@ export const alertsApi = {
   /**
    * Get alerts for specific AOI
    */
-  getAlertsByAOI: async (aoiId: string): Promise<{ data: Alert[] }> => {
+  getAlertsByAOI: async (aoiId: string) => {
     const response = await apiClient.get<Alert[]>(
       API_ENDPOINTS.ALERTS.BY_AOI(aoiId)
     )
