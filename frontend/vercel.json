@@ -1,0 +1,50 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "devCommand": "npm run dev",
+  "env": {
+    "NEXT_PUBLIC_API_BASE_URL": "@geoguardian-api-url",
+    "NEXT_PUBLIC_SUPABASE_URL": "@geoguardian-supabase-url",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@geoguardian-supabase-anon-key",
+    "NEXT_PUBLIC_GOOGLE_CLIENT_ID": "@geoguardian-google-client-id",
+    "NEXTAUTH_SECRET": "@geoguardian-nextauth-secret",
+    "NEXTAUTH_URL": "@geoguardian-nextauth-url"
+  },
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_ENVIRONMENT": "production"
+    }
+  },
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/proxy/:path*",
+      "destination": "https://your-backend.onrender.com/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ]
+}

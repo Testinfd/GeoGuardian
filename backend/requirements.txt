@@ -1,0 +1,85 @@
+# GeoGuardian Backend - Working Package Versions
+# Generated from working environment after fixing dependency conflicts
+
+# Core FastAPI and web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic-settings==2.9.1
+
+# Database and authentication
+supabase==2.21.1
+postgrest==2.21.1
+python-jose[cryptography]==3.5.0
+asyncpg==0.30.0
+
+# HTTP and networking
+requests==2.31.0
+httpx==0.28.1
+
+# Basic image processing and utilities
+pillow==11.2.1
+python-decouple==3.8
+python-dateutil==2.9.0.post0
+
+# Task processing
+celery==5.5.3
+redis==5.0.1
+
+# Email notifications
+sendgrid==6.12.4
+
+# Current satellite data processing
+sentinelhub==3.11.1
+numpy==2.2.4
+opencv-python-headless==4.12.0.88
+
+# Scientific computing and analysis
+scipy==1.16.1
+scikit-learn==1.7.1
+scikit-image==0.25.2
+
+# Geospatial data processing
+rasterio==1.4.3
+xarray==2025.9.0
+netcdf4==1.7.2
+geopandas==1.1.1
+shapely==2.1.1
+pyproj==3.7.2
+fiona==1.10.1
+cartopy==0.25.0
+
+# Advanced visualization
+matplotlib==3.10.1
+seaborn==0.13.2
+plotly==6.0.1
+
+# Data processing and optimization
+joblib==1.5.2
+tqdm==4.67.1
+dask[complete]==2025.7.0
+
+# Earth observation and satellite data
+earthpy==0.9.4
+rioxarray==0.19.0
+planetary-computer==1.0.0
+pystac-client==0.9.0
+
+# Time series analysis
+statsmodels==0.14.5
+pandas==2.2.3
+
+# Testing and development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==25.1.0
+flake8==7.3.0
+
+# Performance monitoring
+psutil==5.9.6
+
+# Critical dependency fixes
+realtime==2.21.1
+storage3==2.21.1
+supabase_auth==2.12.3
+supabase_functions==0.10.1
