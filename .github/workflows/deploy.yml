@@ -19,24 +19,29 @@ jobs:
       with:
         node-version: '18'
         cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
 
     - name: Install dependencies
-      run: npm ci
+      run: |
+        cd frontend
+        npm ci
 
     - name: Build
-      run: npm run export
+      run: |
+        cd frontend
+        npm run export
       env:
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
 
     - name: Create .nojekyll file
-      run: cp .nojekyll ./out/.nojekyll
+      run: cp frontend/.nojekyll frontend/out/.nojekyll
 
     - name: Deploy to GitHub Pages
       if: github.ref == 'refs/heads/main'
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./out
+        publish_dir: ./frontend/out
         cname: geoguardian.github.io
