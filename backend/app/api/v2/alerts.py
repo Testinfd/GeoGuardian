@@ -70,11 +70,26 @@ async def get_all_alerts(
         
         # Apply access control - show alerts for user's AOIs or public AOIs
         if current_user:
-            # Show alerts for user's AOIs or public AOIs (null user_id)
-            query = query.or_(f"aois.user_id.eq.{current_user.id},aois.user_id.is.null")
+            # Filter by aoi_id from alerts that belong to user's AOIs
+            # First get user's AOI IDs
+            aois_response = supabase.table("aois").select("id").or_(f"user_id.eq.{current_user.id},user_id.is.null").execute()
+            aoi_ids = [aoi['id'] for aoi in (aois_response.data or [])]
+            if aoi_ids:
+                # Build OR conditions for all AOI IDs
+                aoi_conditions = ",".join([f"aoi_id.eq.{aoi_id}" for aoi_id in aoi_ids])
+                query = query.or_(aoi_conditions)
+            else:
+                # No AOIs accessible, return empty result
+                return []
         else:
             # Show only alerts for public AOIs for unauthenticated users
-            query = query.is_("aois.user_id", "null")
+            public_aois_response = supabase.table("aois").select("id").is_("user_id", "null").execute()
+            public_aoi_ids = [aoi['id'] for aoi in (public_aois_response.data or [])]
+            if public_aoi_ids:
+                aoi_conditions = ",".join([f"aoi_id.eq.{aoi_id}" for aoi_id in public_aoi_ids])
+                query = query.or_(aoi_conditions)
+            else:
+                return []
         
         # Apply filters
         if status == "confirmed":
@@ -389,13 +404,24 @@ async def get_alerts_by_aoi(
             aois(name, user_id, is_public)
         """).eq("aoi_id", aoi_id)
 
-        # Apply access control
+        # Apply access control - verify user can access this AOI
+        aoi_response = supabase.table("aois").select("user_id, is_public").eq("id", aoi_id).single().execute()
+        
+        if not aoi_response.data:
+            logger.warning(f"AOI {aoi_id} not found")
+            return []
+        
+        aoi_data = aoi_response.data
+        
+        # Check if user has access to this AOI
         if current_user:
-            # Show alerts for user's AOIs or public AOIs
-            query = query.or_(f"aois.user_id.eq.{current_user.id},aois.is_public.eq.true")
+            has_access = (aoi_data.get('user_id') == current_user.id or aoi_data.get('is_public', False))
         else:
-            # Show only alerts for public AOIs for unauthenticated users
-            query = query.eq("aois.is_public", True)
+            has_access = aoi_data.get('is_public', False)
+        
+        if not has_access:
+            logger.warning(f"User does not have access to AOI {aoi_id}")
+            return []
 
         # Apply time range filter
         cutoff_date = datetime.now() - timedelta(days=days_back)

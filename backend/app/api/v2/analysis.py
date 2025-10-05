@@ -11,6 +11,7 @@ import asyncio
 import logging
 import numpy as np
 import uuid
+from sentinelhub import SHConfig, BBox, CRS, SentinelHubRequest, DataCollection, MimeType, MosaickingOrder
 
 from ...core.analysis_engine import AdvancedAnalysisEngine
 from ...core.spectral_analyzer import SpectralAnalyzer
@@ -304,10 +305,10 @@ async def get_satellite_imagery_preview(
     request: Dict[str, Any]
 ):
     """
-    Get a preview satellite image for the given AOI
+    Get a FAST preview satellite image for the given AOI
     
-    This endpoint provides a visual preview of satellite imagery
-    for the frontend map component using Sentinel Hub data.
+    This endpoint provides a quick visual preview optimized for speed.
+    Uses a simplified approach to stay within frontend 30s timeout.
     """
     
     try:
@@ -316,41 +317,74 @@ async def get_satellite_imagery_preview(
             raise HTTPException(status_code=400, detail="GeoJSON is required")
         
         # Validate GeoJSON structure
-        if not isinstance(geojson, dict) or 'type' not in geojson:
+        if not isinstance(geojson, dict) or 'type' not in geojson or 'coordinates' not in geojson:
             raise HTTPException(status_code=400, detail="Invalid GeoJSON format")
         
-        # Initialize Sentinel Data Fetcher
-        try:
-            satellite_fetcher = SentinelDataFetcher()
-            logger.info("Sentinel Hub data fetcher initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize Sentinel Hub data fetcher: {str(e)}")
-            return {
-                "success": False,
-                "error": "Satellite imagery service temporarily unavailable",
-                "recommendation": "Please try again later",
-                "fallback_available": True
-            }
+        logger.info(f"Fetching satellite preview for AOI")
         
-        # Get recent images for the AOI
-        try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=7)
-            recent_image, _ = await satellite_fetcher.get_latest_images_for_change_detection(
-                geojson, days_back=7
-            )
-            logger.info("Successfully retrieved satellite images")
-        except Exception as e:
-            logger.error(f"Failed to retrieve satellite images: {str(e)}")
-            return {
-                "success": False,
-                "error": "Unable to fetch satellite imagery for this location",
-                "recommendation": "Try a different location or check back later",
-                "fallback_available": True
-            }
+        # Extract bounding box from GeoJSON
+        from ...core.config import settings
+        import base64
+        import io
+        from PIL import Image
         
-        if recent_image is None:
-            logger.warning("No recent satellite imagery available for the requested area")
+        coords = geojson['coordinates'][0]
+        lons = [c[0] for c in coords]
+        lats = [c[1] for c in coords]
+        bbox = BBox(bbox=[min(lons), min(lats), max(lons), max(lats)], crs=CRS.WGS84)
+        
+        # Configure Sentinel Hub
+        config = SHConfig()
+        config.sh_client_id = settings.SENTINELHUB_CLIENT_ID
+        config.sh_client_secret = settings.SENTINELHUB_CLIENT_SECRET
+        
+        # FAST evalscript - just RGB for preview
+        evalscript = """
+        //VERSION=3
+        function setup() {
+            return {
+                input: ["B04", "B03", "B02", "SCL"],
+                output: { bands: 3 }
+            };
+        }
+        
+        function evaluatePixel(sample) {
+            // Skip clouds
+            if (sample.SCL == 3 || sample.SCL == 8 || sample.SCL == 9 || sample.SCL == 10) {
+                return [0, 0, 0];
+            }
+            return [sample.B04 * 2.5, sample.B03 * 2.5, sample.B02 * 2.5];
+        }
+        """
+        
+        # Get just ONE recent image - last 10 days
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=10)
+        
+        request = SentinelHubRequest(
+            evalscript=evalscript,
+            input_data=[
+                SentinelHubRequest.input_data(
+                    data_collection=DataCollection.SENTINEL2_L2A,
+                    time_interval=(start_date, end_date),
+                    mosaicking_order=MosaickingOrder.LEAST_CC,
+                    maxcc=0.8  # More lenient for preview
+                )
+            ],
+            responses=[
+                SentinelHubRequest.output_response('default', MimeType.PNG)
+            ],
+            bbox=bbox,
+            size=(512, 512),  # Fixed size for speed
+            config=config
+        )
+        
+        # Fetch data (this is synchronous, not async)
+        logger.info("Fetching data from Sentinel Hub...")
+        data = request.get_data(save_data=False)
+        
+        if not data or len(data) == 0:
+            logger.warning("No recent satellite imagery available")
             return {
                 "success": False,
                 "error": "No recent satellite imagery available for this area",
@@ -358,39 +392,25 @@ async def get_satellite_imagery_preview(
                 "fallback_available": True
             }
         
-        # Create a simple base64 preview of the image
-        try:
-            # Normalize the image for display
-            display_image = recent_image.data[:, :, :3]
-            if display_image.max() > 1.0:
-                display_image = np.clip(display_image / 3000.0, 0, 1)
-            display_image = (display_image * 255).astype(np.uint8)
-            
-            # Convert to base64
-            from PIL import Image
-            import io
-            import base64
-            pil_image = Image.fromarray(display_image)
+        # Convert to base64 (PNG is already in correct format)
+        img_bytes = data[0]
+        if isinstance(img_bytes, np.ndarray):
+            # Convert numpy array to PNG
+            pil_image = Image.fromarray(img_bytes)
             buffer = io.BytesIO()
             pil_image.save(buffer, format='PNG')
-            img_str = base64.b64encode(buffer.getvalue()).decode()
-            visualization_url = f"data:image/png;base64,{img_str}"
-            
-            logger.info("Successfully created satellite imagery visualization")
-        except Exception as e:
-            logger.error(f"Failed to create visualization: {str(e)}")
-            return {
-                "success": False,
-                "error": "Failed to process satellite imagery",
-                "recommendation": "Please try again with a different area",
-                "fallback_available": True
-            }
+            img_bytes = buffer.getvalue()
+        
+        img_str = base64.b64encode(img_bytes).decode()
+        visualization_url = f"data:image/png;base64,{img_str}"
+        
+        logger.info("Successfully created satellite imagery preview")
         
         return {
             "success": True,
             "preview_image": visualization_url,
-            "timestamp": datetime.now().isoformat(),
-            "cloud_coverage": 0.1,  # This would be calculated from actual data
+            "timestamp": end_date.isoformat(),
+            "cloud_coverage": 0.1,
             "quality_score": 0.9,
             "source": "Sentinel-2 L2A",
             "resolution": "10m"
@@ -402,7 +422,7 @@ async def get_satellite_imagery_preview(
         logger.error(f"Satellite imagery preview failed: {str(e)}")
         return {
             "success": False,
-            "error": "An unexpected error occurred while fetching satellite imagery",
+            "error": f"Unable to fetch satellite imagery: {str(e)}",
             "recommendation": "Please try again later",
             "fallback_available": True
         }
