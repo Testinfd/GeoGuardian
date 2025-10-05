@@ -22,6 +22,7 @@ import {
   CheckCircle
 } from 'lucide-react'
 import { Button, Card, Badge, Loading, Alert } from '@/components/ui'
+import { SatelliteImagePreview } from '@/components/map'
 import { useAnalysisStore } from '@/stores/analysis'
 import { useAOIStore } from '@/stores/aoi'
 import type { AnalysisType, AOI } from '@/types'
@@ -222,9 +223,13 @@ export default function AnalysisSelector({
   const [selectedType, setSelectedType] = useState<AnalysisType | null>('comprehensive')
   const [dateRangeDays, setDateRangeDays] = useState<number>(30)
   const [isRunning, setIsRunning] = useState(false)
+  const [checkingData, setCheckingData] = useState(false)
+  const [dataAvailability, setDataAvailability] = useState<any>(null)
+  const [showDataWarning, setShowDataWarning] = useState(false)
   
   const { 
     startAnalysis, 
+    checkDataAvailability,
     capabilities, 
     systemStatus,
     fetchCapabilities,
@@ -244,9 +249,59 @@ export default function AnalysisSelector({
     fetchSystemStatus()
   }, [fetchCapabilities, fetchSystemStatus])
 
+  // Check data availability when AOI or date range changes
+  useEffect(() => {
+    if (aoi) {
+      checkDataAvailabilityForAOI()
+    }
+  }, [aoi?.id, dateRangeDays])
+
+  const checkDataAvailabilityForAOI = async () => {
+    if (!aoi) return
+
+    setCheckingData(true)
+    try {
+      const availability = await checkDataAvailability(aoi.id, aoi.geojson)
+      setDataAvailability(availability)
+      
+      // Show warning if data is insufficient
+      if (!availability.sufficient_for_analysis) {
+        setShowDataWarning(true)
+      } else {
+        setShowDataWarning(false)
+      }
+    } catch (error) {
+      console.error('Failed to check data availability:', error)
+      setDataAvailability(null)
+    } finally {
+      setCheckingData(false)
+    }
+  }
+
   const handleRunAnalysis = async () => {
     if (!selectedType || !aoi) return
 
+    // Check data availability first
+    setCheckingData(true)
+    try {
+      const availability = await checkDataAvailability(aoi.id, aoi.geojson)
+      setDataAvailability(availability)
+
+      // If insufficient data, show warning and don't proceed
+      if (!availability.sufficient_for_analysis) {
+        setShowDataWarning(true)
+        setCheckingData(false)
+        return
+      }
+
+      setShowDataWarning(false)
+    } catch (error) {
+      console.error('Failed to check data availability:', error)
+      setCheckingData(false)
+      // Continue with analysis anyway if check fails
+    }
+
+    setCheckingData(false)
     setIsRunning(true)
     
     try {
@@ -267,7 +322,7 @@ export default function AnalysisSelector({
     }
   }
 
-  const canRunAnalysis = selectedType && aoi && systemStatus?.status === 'healthy' && !isRunning && !analysisLoading
+  const canRunAnalysis = selectedType && aoi && systemStatus?.status === 'healthy' && !isRunning && !analysisLoading && !checkingData
 
   return (
     <div className={`space-y-6 ${className}`}>
@@ -281,15 +336,28 @@ export default function AnalysisSelector({
 
       {/* AOI Info */}
       {aoi ? (
-        <Card className="p-4 bg-green-50 border-green-200">
-          <div className="flex items-center">
-            <CheckCircle className="w-5 h-5 text-green-600 mr-3" />
-            <div>
-              <h3 className="font-medium text-green-900">Selected AOI</h3>
-              <p className="text-sm text-green-700">{aoi.name}</p>
+        <>
+          <Card className="p-4 bg-green-50 border-green-200">
+            <div className="flex items-center">
+              <CheckCircle className="w-5 h-5 text-green-600 mr-3" />
+              <div>
+                <h3 className="font-medium text-green-900">Selected AOI</h3>
+                <p className="text-sm text-green-700">{aoi.name}</p>
+              </div>
             </div>
+          </Card>
+
+          {/* Satellite Preview */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-900 mb-3">Recent Satellite View</h3>
+            <SatelliteImagePreview
+              geojson={aoi.geojson}
+              aoiName={aoi.name}
+              height="250px"
+              showMetadata={true}
+            />
           </div>
-        </Card>
+        </>
       ) : (
         <Alert variant="warning">
           <AlertCircle className="w-4 h-4" />
@@ -324,6 +392,67 @@ export default function AnalysisSelector({
             <p className="text-sm mt-1">{error}</p>
           </div>
         </Alert>
+      )}
+
+      {/* Data Availability Check */}
+      {checkingData && (
+        <Alert variant="default">
+          <Loading className="w-4 h-4" />
+          <div>
+            <h4 className="font-medium">Checking Satellite Data Availability...</h4>
+            <p className="text-sm mt-1">
+              Searching for recent Sentinel-2 imagery for this area.
+            </p>
+          </div>
+        </Alert>
+      )}
+
+      {/* Data Availability Warning */}
+      {showDataWarning && dataAvailability && !dataAvailability.sufficient_for_analysis && (
+        <Alert variant="warning">
+          <AlertCircle className="w-4 h-4" />
+          <div>
+            <h4 className="font-medium">Insufficient Satellite Data</h4>
+            <p className="text-sm mt-1">
+              {dataAvailability.message || `Only ${dataAvailability.total_images || 0} image(s) found (need 2+ for analysis).`}
+            </p>
+            {dataAvailability.recommendation && (
+              <p className="text-sm mt-2 font-medium">{dataAvailability.recommendation}</p>
+            )}
+            <div className="mt-3 p-3 bg-yellow-50 rounded-md">
+              <p className="text-sm font-medium text-yellow-900 mb-2">What you can try:</p>
+              <ul className="text-sm text-yellow-800 list-disc list-inside space-y-1">
+                {dataAvailability.helpful_tips ? (
+                  dataAvailability.helpful_tips.map((tip: string, idx: number) => (
+                    <li key={idx}>{tip}</li>
+                  ))
+                ) : (
+                  <>
+                    <li>Try increasing the date range to 60-90 days</li>
+                    <li>Wait a few days for new satellite passes</li>
+                    <li>Check if the area has persistent cloud coverage</li>
+                  </>
+                )}
+              </ul>
+            </div>
+          </div>
+        </Alert>
+      )}
+
+      {/* Data Availability Success */}
+      {!checkingData && dataAvailability && dataAvailability.sufficient_for_analysis && (
+        <Card className="p-4 bg-green-50 border-green-200">
+          <div className="flex items-center">
+            <CheckCircle className="w-5 h-5 text-green-600 mr-3" />
+            <div className="flex-1">
+              <h3 className="font-medium text-green-900">Satellite Data Available</h3>
+              <p className="text-sm text-green-700">
+                Found {dataAvailability.total_images} image(s) • {dataAvailability.high_quality_images || 0} high quality • 
+                {' '}{(dataAvailability.average_cloud_coverage * 100).toFixed(1)}% avg cloud cover
+              </p>
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* Date Range Selector */}
@@ -392,11 +521,16 @@ export default function AnalysisSelector({
       <div className="flex justify-center">
         <Button
           onClick={handleRunAnalysis}
-          disabled={!canRunAnalysis}
+          disabled={!canRunAnalysis || (showDataWarning && !dataAvailability?.sufficient_for_analysis)}
           size="lg"
           className="px-8"
         >
-          {isRunning || analysisLoading ? (
+          {checkingData ? (
+            <>
+              <Loading className="mr-2" />
+              Checking Data Availability...
+            </>
+          ) : isRunning || analysisLoading ? (
             <>
               <Loading className="mr-2" />
               Starting Analysis...
@@ -409,6 +543,15 @@ export default function AnalysisSelector({
           )}
         </Button>
       </div>
+
+      {/* Button Help Text */}
+      {showDataWarning && dataAvailability && !dataAvailability.sufficient_for_analysis && (
+        <div className="text-center">
+          <p className="text-sm text-gray-600">
+            Analysis cannot be started due to insufficient satellite data. Please try the suggestions above.
+          </p>
+        </div>
+      )}
 
       {/* Additional Info */}
       <Card className="p-4 bg-blue-50 border-blue-200">

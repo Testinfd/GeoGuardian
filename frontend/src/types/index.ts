@@ -126,21 +126,78 @@ export type HistoricalAnalysisRequest = {
   interval_days?: number
 }
 
-// Detection interface for detections array
+// Detection interface for detections array - aligned with backend
 export type Detection = {
   id?: string
   type: string
-  confidence: number
+  algorithm: string
   change_detected: boolean
-  severity?: 'low' | 'medium' | 'high' | 'critical'
+  detected: boolean // Alias for change_detected
+  change_type?: string
+  severity?: 'low' | 'moderate' | 'medium' | 'high' | 'critical'
+  change_percentage?: number
+  confidence: number
+  spatial_metrics?: {
+    total_pixels: number
+    changed_pixels: number
+    vegetation_loss_pixels?: number
+    vegetation_gain_pixels?: number
+    mean_ndvi_change?: number
+    max_ndvi_change?: number
+    [key: string]: any
+  }
+  change_mask?: number[]
+  confidence_map?: number[]
   location?: LatLng
   area_affected?: number
   description?: string
-  metadata?: Record<string, any>
-  // Additional properties for compatibility
-  algorithm?: string
-  detected?: boolean
   details?: string
+  metadata?: Record<string, any>
+}
+
+// Spectral indices with full statistics
+export type SpectralIndex = {
+  mean: number
+  min: number
+  max: number
+  std: number
+}
+
+// Environmental health scoring (0-100 scale)
+export type EnvironmentalHealthScore = {
+  overall_score: number
+  vegetation_health: number
+  water_health: number
+  urbanization_impact: number
+  dominant_feature: string
+}
+
+// Satellite metadata
+export type SatelliteImageMetadata = {
+  timestamp: string
+  quality_score: number
+  cloud_coverage: number
+  resolution: number
+  bands: string[]
+}
+
+// Multi-sensor fusion results
+export type FusionAnalysis = {
+  composite_risk_score: number
+  risk_level: 'low' | 'moderate' | 'medium' | 'high' | 'critical'
+  category: string
+  confidence: number
+  primary_indicators: string[]
+  supporting_evidence: string[]
+  seasonal_likelihood: number
+  recommendation: string
+  change_detected: boolean
+  details: {
+    risk_factors?: string[]
+    temporal_trends?: string
+    spatial_patterns?: string
+    [key: string]: any
+  }
 }
 
 export type AnalysisResult = {
@@ -154,24 +211,72 @@ export type AnalysisResult = {
     confidence_score: number
     overall_confidence?: number
     algorithm_results: Record<AlgorithmType, any>
-    spectral_indices?: Record<string, number>
+    // Rich spectral indices data (12+ indices with statistics)
+    spectral_indices?: Record<string, SpectralIndex>
+    indices?: Record<string, SpectralIndex> // Backend uses 'indices'
+    // Environmental health scoring
+    environmental_health?: EnvironmentalHealthScore
+    // Satellite metadata
+    satellite_metadata?: {
+      recent_image?: SatelliteImageMetadata
+      baseline_image?: SatelliteImageMetadata
+      time_separation_days?: number
+    }
+    // Multi-sensor fusion
+    fusion_analysis?: FusionAnalysis
+    // Spatial metrics
+    spatial_metrics?: {
+      total_pixels: number
+      changed_pixels: number
+      change_percentage: number
+      [key: string]: any
+    }
     visualizations?: {
       before_image?: string
       after_image?: string
       change_map?: string
       gif_visualization?: string
+      // Advanced visualizations
+      change_overlay?: string
+      ndvi_comparison?: string
+      ndwi_comparison?: string
+      ndbi_comparison?: string
+      multi_spectral?: string
+      rgb?: string
+      ndvi?: string
+      ndwi?: string
+      ndbi?: string
+      [key: string]: any
     }
+    visualization_urls?: Record<string, string>
     detections?: Detection[]
     visual_evidence?: any[]
     summary: string
     statistics: Record<string, number>
-    processing_metadata?: Record<string, any>
+    processing_metadata?: {
+      image_shapes?: {
+        before?: number[]
+        after?: number[]
+      }
+      geojson_bounds?: number[]
+      processing_time?: number
+      algorithms_used?: string[]
+      error?: string
+      data_quality_score?: number
+      [key: string]: any
+    }
   }
   processing_time?: number
   error_message?: string
   processing_metadata?: {
     error?: string
-    data_availability?: Record<string, any>
+    data_availability?: {
+      total_images?: number
+      high_quality_images?: number
+      average_cloud_coverage?: number
+      recommendation?: string
+      sufficient_for_analysis?: boolean
+    }
     helpful_tips?: string[]
     [key: string]: any
   }
@@ -182,17 +287,22 @@ export type AnalysisResult = {
 
 export type DataAvailability = {
   available: boolean
-  image_count: number
+  sufficient_for_analysis: boolean
+  total_images: number
+  high_quality_images: number
+  average_cloud_coverage: number
   date_range: {
     start: string
     end: string
   }
-  cloud_coverage_stats: {
+  cloud_coverage_stats?: {
     min: number
     max: number
     avg: number
   }
+  recommendation?: string
   message?: string
+  helpful_tips?: string[]
 }
 
 export type DataAvailabilityResponse = {

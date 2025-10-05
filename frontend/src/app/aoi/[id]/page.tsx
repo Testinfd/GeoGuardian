@@ -28,7 +28,7 @@ import {
   Clock
 } from 'lucide-react'
 import { Button, Card, Loading, Badge, Alert, Modal } from '@/components/ui'
-import { SentinelMap } from '@/components/map'
+import { SentinelMap, SatelliteImagePreview } from '@/components/map'
 import { useAOIStore } from '@/stores/aoi'
 import { useAnalysisStore } from '@/stores/analysis'
 import { useAlertStore } from '@/stores/alerts'
@@ -469,8 +469,22 @@ export default function AOIDetailsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Map Section */}
           <div className="lg:col-span-2">
+            {/* Satellite Preview */}
             <Card className="p-4 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Area Location</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Recent Satellite Imagery
+              </h2>
+              <SatelliteImagePreview 
+                geojson={aoi.geojson}
+                aoiName={aoi.name}
+                height="400px"
+                showMetadata={true}
+              />
+            </Card>
+
+            {/* Map View */}
+            <Card className="p-4 mb-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Map Location</h2>
               <SentinelMap
                 height="400px"
                 aois={[aoi]}

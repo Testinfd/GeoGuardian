@@ -2,6 +2,16 @@
 const nextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
+
+  // Proxy API requests to backend server in development
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8000/api/:path*',
+      },
+    ]
+  },
   images: {
     unoptimized: true,
     remotePatterns: [

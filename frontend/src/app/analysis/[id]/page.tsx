@@ -27,10 +27,20 @@ import {
   Cpu,
   Eye,
   RotateCcw,
-  ExternalLink
+  ExternalLink,
+  Leaf,
+  Droplets,
+  Shield
 } from 'lucide-react'
 import { Button, Card, Badge, Loading, Alert, Progress } from '@/components/ui'
 import { SentinelMap } from '@/components/map'
+import { 
+  SpectralIndicesPanel, 
+  EnvironmentalHealthScore,
+  SpatialMetricsDisplay,
+  FusionResultsPanel,
+  SatelliteMetadataPanel
+} from '@/components/analysis'
 import { useAnalysisStore } from '@/stores/analysis'
 import { useAOIStore } from '@/stores/aoi'
 import type { AnalysisResult } from '@/types'
@@ -73,37 +83,49 @@ interface AlgorithmResultProps {
 }
 
 function AlgorithmResult({ name, detected, confidence, details }: AlgorithmResultProps) {
+  const [expanded, setExpanded] = useState(false)
+  
   return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-medium text-gray-900">{name || 'Unknown Algorithm'}</h3>
-        <Badge variant={detected ? 'warning' : 'success'} size="sm">
-          {detected ? 'Change Detected' : 'No Change'}
-        </Badge>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Confidence</span>
-          <span className="font-medium">{Math.round((confidence || 0) * 100)}%</span>
-        </div>
-        <Progress value={(confidence || 0) * 100} className="h-2" />
-
-        {details && Object.keys(details).length > 0 && (
-          <div className="mt-3 pt-3 border-t border-gray-200">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Details</h4>
-            <div className="space-y-1">
-              {Object.entries(details).map(([key, value]) => (
-                <div key={key} className="flex justify-between text-xs">
-                  <span className="text-gray-500 capitalize">{key.replace('_', ' ')}</span>
-                  <span className="font-medium">
-                    {typeof value === 'number' ? value.toFixed(3) : String(value)}
-                  </span>
-                </div>
-              ))}
-            </div>
+    <Card className="p-4 hover:shadow-md transition-shadow">
+      <div 
+        className="cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium text-gray-900">{name || 'Unknown Algorithm'}</h3>
+          <div className="flex items-center space-x-2">
+            <Badge variant={detected ? 'warning' : 'success'} size="sm">
+              {detected ? 'Change Detected' : 'No Change'}
+            </Badge>
+            <span className="text-xs text-gray-500">
+              {expanded ? '▼' : '▶'}
+            </span>
           </div>
-        )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Confidence</span>
+            <span className="font-medium">{Math.round((confidence || 0) * 100)}%</span>
+          </div>
+          <Progress value={(confidence || 0) * 100} className="h-2" />
+
+          {expanded && details && Object.keys(details).length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-200">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Details</h4>
+              <div className="space-y-1">
+                {Object.entries(details).map(([key, value]) => (
+                  <div key={key} className="flex justify-between text-xs">
+                    <span className="text-gray-500 capitalize">{key.replace(/_/g, ' ')}</span>
+                    <span className="font-medium">
+                      {typeof value === 'number' ? value.toFixed(3) : String(value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </Card>
   )
@@ -123,11 +145,23 @@ function VisualizationGallery({ visualizations }: VisualizationGalleryProps) {
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
 
   const images = [
-    { key: 'before_image_url', label: 'Before', url: visualizations.before_image_url },
-    { key: 'after_image_url', label: 'After', url: visualizations.after_image_url },
-    { key: 'difference_image_url', label: 'Difference', url: visualizations.difference_image_url },
-    { key: 'gif_url', label: 'Time-lapse', url: visualizations.gif_url },
+    { key: 'before_image_url', label: 'Before Image', url: visualizations.before_image_url, category: 'primary' },
+    { key: 'after_image_url', label: 'After Image', url: visualizations.after_image_url, category: 'primary' },
+    { key: 'difference_image_url', label: 'Change Map', url: visualizations.difference_image_url, category: 'primary' },
+    { key: 'gif_url', label: 'Time-lapse', url: visualizations.gif_url, category: 'primary' },
+    // Advanced visualizations from backend
+    { key: 'ndvi', label: 'NDVI Heatmap', url: (visualizations as any).ndvi, category: 'spectral' },
+    { key: 'ndwi', label: 'NDWI Heatmap', url: (visualizations as any).ndwi, category: 'spectral' },
+    { key: 'ndbi', label: 'NDBI Heatmap', url: (visualizations as any).ndbi, category: 'spectral' },
+    { key: 'rgb', label: 'RGB Composite', url: (visualizations as any).rgb, category: 'spectral' },
+    { key: 'change_overlay', label: 'Change Overlay', url: (visualizations as any).change_overlay, category: 'advanced' },
+    { key: 'ndvi_comparison', label: 'NDVI Comparison', url: (visualizations as any).ndvi_comparison, category: 'advanced' },
+    { key: 'multi_spectral', label: 'Multi-spectral', url: (visualizations as any).multi_spectral, category: 'advanced' },
   ].filter(img => img.url && !imageErrors[img.key])
+
+  const primaryImages = images.filter(img => img.category === 'primary')
+  const spectralImages = images.filter(img => img.category === 'spectral')
+  const advancedImages = images.filter(img => img.category === 'advanced')
 
   const handleImageError = (key: string) => {
     setImageErrors(prev => ({ ...prev, [key]: true }))
@@ -143,29 +177,42 @@ function VisualizationGallery({ visualizations }: VisualizationGalleryProps) {
     )
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {images.map((image) => (
-          <div
-            key={image.key}
-            className="relative cursor-pointer group"
-            onClick={() => setSelectedImage(image.url!)}
-          >
-            <img
-              src={image.url}
-              alt={image.label}
-              className="w-full h-32 object-cover rounded-lg border border-gray-200 group-hover:border-blue-500 transition-colors"
-              onError={() => handleImageError(image.key)}
-              loading="lazy"
-            />
-            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 rounded-lg flex items-center justify-center">
-              <ExternalLink className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+  const renderImageGrid = (imageList: typeof images, title?: string) => {
+    if (imageList.length === 0) return null
+    
+    return (
+      <div className="space-y-3">
+        {title && <h4 className="text-sm font-semibold text-gray-700">{title}</h4>}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {imageList.map((image) => (
+            <div
+              key={image.key}
+              className="relative cursor-pointer group"
+              onClick={() => setSelectedImage(image.url!)}
+            >
+              <img
+                src={image.url}
+                alt={image.label}
+                className="w-full h-32 object-cover rounded-lg border border-gray-200 group-hover:border-blue-500 transition-colors"
+                onError={() => handleImageError(image.key)}
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 rounded-lg flex items-center justify-center">
+                <ExternalLink className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <p className="text-sm font-medium text-gray-700 mt-2 text-center">{image.label}</p>
             </div>
-            <p className="text-sm font-medium text-gray-700 mt-2 text-center">{image.label}</p>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {renderImageGrid(primaryImages, primaryImages.length > 0 ? 'Primary Visualizations' : undefined)}
+      {renderImageGrid(spectralImages, spectralImages.length > 0 ? 'Spectral Index Heatmaps' : undefined)}
+      {renderImageGrid(advancedImages, advancedImages.length > 0 ? 'Advanced Analysis' : undefined)}
 
       {/* Modal for full-size image */}
       {selectedImage && (
@@ -497,18 +544,58 @@ export default function AnalysisResultPage() {
               </div>
             </Card>
 
+            {/* Environmental Health Score */}
+            {(analysis.results.environmental_health || (analysis.results.indices || analysis.results.spectral_indices)) && (
+              <EnvironmentalHealthScore 
+                healthScore={analysis.results.environmental_health}
+                indices={analysis.results.indices || analysis.results.spectral_indices}
+              />
+            )}
+
+            {/* Multi-Sensor Fusion Analysis */}
+            {analysis.results.fusion_analysis && (
+              <FusionResultsPanel fusion={analysis.results.fusion_analysis} />
+            )}
+
+            {/* Satellite Metadata */}
+            {analysis.results.satellite_metadata && (
+              <SatelliteMetadataPanel metadata={analysis.results.satellite_metadata} />
+            )}
+
+            {/* Spectral Indices */}
+            {(analysis.results.indices || analysis.results.spectral_indices) && (
+              <SpectralIndicesPanel 
+                indices={(analysis.results.indices || analysis.results.spectral_indices)!} 
+              />
+            )}
+
+            {/* Spatial Metrics */}
+            {analysis.results.spatial_metrics && (
+              <SpatialMetricsDisplay metrics={analysis.results.spatial_metrics} />
+            )}
+
             {/* Algorithm Results */}
             {analysis.results.detections && analysis.results.detections.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Algorithm Results</h2>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Algorithm Detection Results</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {analysis.results.detections.map((detection, index) => (
                     <AlgorithmResult
                       key={index}
                       name={detection.algorithm}
-                      detected={detection.detected}
+                      detected={detection.detected || detection.change_detected}
                       confidence={detection.confidence}
-                      details={detection.details ? { content: detection.details } : {}}
+                      details={
+                        detection.spatial_metrics || detection.details 
+                          ? { 
+                              ...(detection.spatial_metrics || {}),
+                              ...(detection.details ? { content: detection.details } : {}),
+                              ...(detection.change_type ? { change_type: detection.change_type } : {}),
+                              ...(detection.severity ? { severity: detection.severity } : {}),
+                              ...(detection.change_percentage !== undefined ? { change_percentage: `${detection.change_percentage.toFixed(2)}%` } : {})
+                            }
+                          : {}
+                      }
                     />
                   ))}
                 </div>
