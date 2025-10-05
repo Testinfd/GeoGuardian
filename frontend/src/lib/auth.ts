@@ -87,59 +87,88 @@ export const authFunctions = {
   }
 }
 
+// Cache for user creation to prevent duplicate calls
+const userCreationCache = new Map<string, Promise<any>>()
+
 // Create or update user in database
 export const createUserInDatabase = async (user: any) => {
-  try {
-    // First check if users table exists and user can access it
-    const { data: existingUser, error: selectError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle()
+  // Check if we're already creating this user
+  const cacheKey = user.id
+  if (userCreationCache.has(cacheKey)) {
+    return userCreationCache.get(cacheKey)
+  }
 
-    // If there's an error accessing the table, it might not exist or have proper RLS
-    if (selectError && selectError.code !== 'PGRST116') { // PGRST116 is "not found"
-      console.warn('Users table access issue, skipping user creation:', selectError.message)
-      return { id: user.id, email: user.email } // Return minimal user data
-    }
+  const creationPromise = (async () => {
+    try {
+      // First check if users table exists and user can access it
+      const { data: existingUser, error: selectError } = await supabase
+        .from('users')
+        .select('id, email, name, picture')
+        .eq('id', user.id)
+        .maybeSingle()
 
-    // If user already exists, return without updating
-    if (existingUser) {
-      return existingUser
-    }
+      // If there's an error accessing the table, it might not exist or have proper RLS
+      if (selectError && selectError.code !== 'PGRST116') { // PGRST116 is "not found"
+        return { id: user.id, email: user.email } // Return minimal user data
+      }
 
-    // Try to create/update user
-    const { data, error } = await supabase
-      .from('users')
-      .upsert({
-        id: user.id,
-        email: user.email,
-        name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0],
-        picture: user.user_metadata?.avatar_url || user.user_metadata?.picture,
-        created_at: user.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .select()
-      .single()
+      // If user already exists, return without updating
+      if (existingUser) {
+        return existingUser
+      }
 
-    if (error) {
-      console.warn('Error creating user in database (continuing anyway):', error.message)
-      // Return minimal user data if database operation fails
+      // Try to create/update user
+      const { data, error } = await supabase
+        .from('users')
+        .upsert({
+          id: user.id,
+          email: user.email,
+          name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0],
+          picture: user.user_metadata?.avatar_url || user.user_metadata?.picture,
+          created_at: user.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'id',
+          ignoreDuplicates: true
+        })
+        .select()
+        .single()
+
+      if (error) {
+        // If it's a duplicate key error, just silently return minimal data
+        if (error.code === '23505' || error.message.includes('duplicate key')) {
+          return { 
+            id: user.id, 
+            email: user.email,
+            name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0]
+          }
+        }
+        // Return minimal user data if database operation fails
+        return { 
+          id: user.id, 
+          email: user.email,
+          name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0]
+        }
+      }
+
+      return data
+    } catch (error) {
+      // Return minimal user data to allow auth to continue
       return { 
         id: user.id, 
         email: user.email,
         name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0]
       }
+    } finally {
+      // Clear cache after a short delay
+      setTimeout(() => {
+        userCreationCache.delete(cacheKey)
+      }, 5000)
     }
+  })()
 
-    return data
-  } catch (error) {
-    console.warn('Error in createUserInDatabase (continuing anyway):', error)
-    // Return minimal user data to allow auth to continue
-    return { 
-      id: user.id, 
-      email: user.email,
-      name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0]
-    }
-  }
+  // Store in cache
+  userCreationCache.set(cacheKey, creationPromise)
+  
+  return creationPromise
 }

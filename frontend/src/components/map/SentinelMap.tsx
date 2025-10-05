@@ -33,6 +33,14 @@ interface SatelliteImagery {
   quality: number
 }
 
+interface TimelineImage {
+  url: string
+  date: string
+  cloudCoverage: number
+  quality: number
+  isLoading?: boolean
+}
+
 export default function SentinelMap({
   height = "400px",
   width = "100%",
@@ -48,17 +56,22 @@ export default function SentinelMap({
 }: SentinelMapProps) {
   const user = useUser()
   const [imagery, setImagery] = useState<SatelliteImagery | null>(null)
+  const [timelineImages, setTimelineImages] = useState<TimelineImage[]>([])
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [currentZoom, setCurrentZoom] = useState(zoom)
+  const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0 })
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  // Fetch satellite imagery from backend
+  // Fetch satellite imagery from backend with timeline support (30-90 days)
   const fetchSatelliteImagery = async (aoiGeojson?: any) => {
     if (!user) return
     
     setIsLoading(true)
     setError(null)
+    setTimelineImages([])
+    setLoadingProgress({ current: 0, total: 0 })
     
     try {
       // Use the selected AOI's geojson or create a default one around the center point
@@ -73,20 +86,84 @@ export default function SentinelMap({
         ]]
       }
 
-      const data = await analysisApi.getSatelliteImageryPreview(geojson)
+      // Try to load images from multiple time periods (within 30-90 days)
+      const endDate = new Date()
+      const dates: Date[] = []
       
-      if (data.success && data.preview_image) {
-        setImagery({
-          imageUrl: data.preview_image,
-          timestamp: data.timestamp || new Date().toISOString(),
-          cloudCoverage: data.cloud_coverage || 0,
-          quality: data.quality_score || 1
-        })
-      } else {
-        // If no imagery is available, show a helpful message instead of throwing an error
-        console.warn('No satellite imagery available:', data.error || 'Unknown reason')
-        setError('Satellite imagery temporarily unavailable for this area. Please try again later.')
+      // Generate dates at 10-day intervals going back 90 days
+      for (let i = 0; i <= 90; i += 10) {
+        const date = new Date(endDate)
+        date.setDate(date.getDate() - i)
+        dates.push(date)
       }
+
+      setLoadingProgress({ current: 0, total: dates.length })
+      const foundImages: TimelineImage[] = []
+
+      // Try to fetch images for each date progressively
+      for (let i = 0; i < dates.length; i++) {
+        try {
+          const dateStr = dates[i].toISOString().split('T')[0]
+          
+          // Add a placeholder to show loading
+          const loadingImage: TimelineImage = {
+            url: '',
+            date: dateStr,
+            cloudCoverage: 0,
+            quality: 0,
+            isLoading: true
+          }
+          setTimelineImages(prev => [...prev, loadingImage])
+          
+          const data = await analysisApi.getSatelliteImageryPreview(geojson)
+          
+          if (data.success && data.preview_image) {
+            const imageData: TimelineImage = {
+              url: data.preview_image,
+              date: data.timestamp || dateStr,
+              cloudCoverage: data.cloud_coverage || 0,
+              quality: data.quality_score || 1,
+              isLoading: false
+            }
+            
+            foundImages.push(imageData)
+            
+            // Update the timeline with the actual image
+            setTimelineImages(prev => 
+              prev.map((img, idx) => idx === foundImages.length - 1 ? imageData : img)
+            )
+            
+            // Set the first found image as the main imagery
+            if (foundImages.length === 1) {
+              setImagery({
+                imageUrl: data.preview_image,
+                timestamp: data.timestamp || dateStr,
+                cloudCoverage: data.cloud_coverage || 0,
+                quality: data.quality_score || 1
+              })
+            }
+            
+            setLoadingProgress({ current: i + 1, total: dates.length })
+            
+            // If we found at least 3 images, that's good enough
+            if (foundImages.length >= 3) {
+              break
+            }
+          }
+        } catch (err) {
+          console.warn(`No imagery for ${dates[i].toISOString().split('T')[0]}`)
+          // Continue trying other dates
+        }
+      }
+
+      // After all attempts
+      if (foundImages.length === 0) {
+        console.warn('No satellite imagery available in the 30-90 day timeframe')
+        setError('Satellite imagery temporarily unavailable for this area. Please try again later.')
+      } else {
+        setError(null)
+      }
+      
     } catch (err: any) {
       console.error('Error fetching satellite imagery:', err)
       setError(err.message || 'Failed to load satellite imagery')
@@ -170,7 +247,9 @@ export default function SentinelMap({
         {imagery && !isLoading && (
           <>
             <img 
-              src={imagery.imageUrl}
+              src={timelineImages.length > 0 && timelineImages[selectedImageIndex]?.url 
+                ? timelineImages[selectedImageIndex].url 
+                : imagery.imageUrl}
               alt="Sentinel-2 Satellite Imagery"
               className="w-full h-full object-cover"
               onError={() => setError('Failed to load satellite image')}
@@ -182,11 +261,56 @@ export default function SentinelMap({
                 <Satellite className="w-4 h-4" />
                 <span className="font-medium">Sentinel-2</span>
               </div>
-              <div>Acquired: {new Date(imagery.timestamp).toLocaleDateString()}</div>
-              <div>Cloud Coverage: {Math.round(imagery.cloudCoverage * 100)}%</div>
-              <div>Quality: {Math.round(imagery.quality * 100)}%</div>
+              <div>Acquired: {timelineImages.length > 0 && timelineImages[selectedImageIndex]?.date 
+                ? new Date(timelineImages[selectedImageIndex].date).toLocaleDateString() 
+                : new Date(imagery.timestamp).toLocaleDateString()}</div>
+              <div>Cloud Coverage: {timelineImages.length > 0 && timelineImages[selectedImageIndex]
+                ? Math.round(timelineImages[selectedImageIndex].cloudCoverage * 100)
+                : Math.round(imagery.cloudCoverage * 100)}%</div>
+              <div>Quality: {timelineImages.length > 0 && timelineImages[selectedImageIndex]
+                ? Math.round(timelineImages[selectedImageIndex].quality * 100)
+                : Math.round(imagery.quality * 100)}%</div>
             </div>
+
+            {/* Timeline Navigation */}
+            {timelineImages.length > 1 && (
+              <div className="absolute bottom-16 left-3 right-3 bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="w-4 h-4" />
+                  <span className="text-xs font-medium">Timeline ({timelineImages.length} images found)</span>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {timelineImages.map((img, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedImageIndex(idx)}
+                      disabled={img.isLoading || !img.url}
+                      className={`flex-shrink-0 px-3 py-1 text-xs rounded transition-colors ${
+                        selectedImageIndex === idx
+                          ? 'bg-blue-500 text-white'
+                          : img.isLoading || !img.url
+                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : 'bg-gray-700 text-white hover:bg-gray-600'
+                      }`}
+                    >
+                      {img.isLoading ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        new Date(img.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
+        )}
+
+        {/* Loading progress indicator */}
+        {isLoading && loadingProgress.total > 0 && (
+          <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-70 text-white px-4 py-2 rounded-lg text-xs">
+            Searching for imagery... {loadingProgress.current} / {loadingProgress.total}
+          </div>
         )}
 
         {/* No imagery fallback */}

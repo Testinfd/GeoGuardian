@@ -10,7 +10,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useUser } from '@/stores/auth-store'
 import { ProtectedRoute } from '@/components/auth/AuthProvider'
 import { ArrowLeft, Play, AlertCircle, Info } from 'lucide-react'
-import { Navigation } from '@/components/layout'
 import { Button, Card, Loading, Alert } from '@/components/ui'
 import { AnalysisSelector } from '@/components/analysis'
 import { SentinelMap } from '@/components/map'
@@ -120,11 +119,8 @@ export default function NewAnalysisPage() {
 
   if (aoiLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navigation />
-        <div className="flex items-center justify-center py-12">
-          <Loading />
-        </div>
+      <div className="flex items-center justify-center py-12">
+        <Loading />
       </div>
     )
   }
@@ -132,38 +128,33 @@ export default function NewAnalysisPage() {
   // Success state
   if (analysisStarted) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navigation />
-        <div className="max-w-4xl mx-auto py-12 px-6">
-          <Card className="p-8 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Play className="w-8 h-8 text-green-600" />
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">
-              Analysis Started Successfully!
-            </h1>
-            <p className="text-gray-600 mb-6">
-              Your environmental analysis is now running. You'll be redirected to the results page where you can monitor progress.
-            </p>
-            <div className="flex justify-center space-x-4">
-              <Button onClick={() => router.push(`/analysis/${startedAnalysisId}`)}>
-                View Progress
-              </Button>
-              <Button variant="outline" onClick={() => router.push('/analysis')}>
-                All Analyses
-              </Button>
-            </div>
-          </Card>
-        </div>
+      <div className="max-w-4xl mx-auto py-12 px-6">
+        <Card className="p-8 text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Play className="w-8 h-8 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">
+            Analysis Started Successfully!
+          </h1>
+          <p className="text-gray-600 mb-6">
+            Your environmental analysis is now running. You'll be redirected to the results page where you can monitor progress.
+          </p>
+          <div className="flex justify-center space-x-4">
+            <Button onClick={() => router.push(`/analysis/${startedAnalysisId}`)}>
+              View Progress
+            </Button>
+            <Button variant="outline" onClick={() => router.push('/analysis')}>
+              All Analyses
+            </Button>
+          </div>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <ProtectedRoute>
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="px-4 sm:px-0 mb-6">
           <div className="flex items-center mb-4">
@@ -294,7 +285,7 @@ export default function NewAnalysisPage() {
             </div>
           </div>
         </Card>
-      </main>
-    </div>
+      </div>
+    </ProtectedRoute>
   )
 }

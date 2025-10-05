@@ -73,8 +73,8 @@ function AOICard({ aoi, onSelect, onEdit, onDelete, onView }: AOICardProps) {
 
       {aoi.tags && aoi.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3">
-          {aoi.tags.slice(0, 3).map((tag) => (
-            <Badge key={tag} variant="default" size="sm">
+          {aoi.tags.slice(0, 3).map((tag, index) => (
+            <Badge key={`${aoi.id}-tag-${index}`} variant="default" size="sm">
               {tag}
             </Badge>
           ))}
@@ -237,8 +237,12 @@ export default function AOIListPage() {
       try {
         await deleteAOI(deleteConfirmAOI.id)
         setDeleteConfirmAOI(null)
-      } catch (error) {
+        // Show success message (optional - you could add a toast notification here)
+        console.log('AOI deleted successfully')
+      } catch (error: any) {
         console.error('Failed to delete AOI:', error)
+        // Keep the modal open so user can see the error
+        // The error is already set in the store
       }
     }
   }
@@ -444,7 +448,13 @@ export default function AOIListPage() {
         {/* Delete Confirmation Modal */}
       <Modal
         isOpen={!!deleteConfirmAOI}
-        onClose={() => setDeleteConfirmAOI(null)}
+        onClose={() => {
+          setDeleteConfirmAOI(null)
+          // Clear any errors when modal closes
+          if (error) {
+            useAOIStore.getState().clearError()
+          }
+        }}
         title="Delete AOI"
       >
         <div className="p-6">
@@ -460,12 +470,32 @@ export default function AOIListPage() {
             </div>
           </div>
 
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-800">{error}</p>
+            </div>
+          )}
+
           <div className="flex justify-end space-x-3">
-            <Button variant="outline" onClick={() => setDeleteConfirmAOI(null)}>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setDeleteConfirmAOI(null)
+                if (error) {
+                  useAOIStore.getState().clearError()
+                }
+              }}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
-            <Button variant="primary" onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
-              Delete AOI
+            <Button 
+              variant="primary" 
+              onClick={confirmDelete} 
+              disabled={isLoading}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isLoading ? 'Deleting...' : 'Delete AOI'}
             </Button>
           </div>
         </div>

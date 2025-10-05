@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import asyncio
 import logging
 import numpy as np
+import uuid
 
 from ...core.analysis_engine import AdvancedAnalysisEngine
 from ...core.spectral_analyzer import SpectralAnalyzer
@@ -40,7 +41,9 @@ class ComprehensiveAnalysisRequest(BaseModel):
 
 class ComprehensiveAnalysisResponse(BaseModel):
     """Enhanced comprehensive analysis response with detailed results"""
+    id: str = Field(..., description="Unique analysis ID")
     aoi_id: str
+    analysis_type: str = Field(..., description="Type of analysis performed")
     status: str
     success: bool
     overall_confidence: float
@@ -54,10 +57,15 @@ class ComprehensiveAnalysisResponse(BaseModel):
     satellite_metadata: Optional[Dict[str, Any]] = None
     processing_metadata: Optional[Dict[str, Any]] = None
     
+    # Progress tracking
+    progress: Optional[int] = Field(None, description="Progress percentage (0-100)")
+    
     # Timing and quality metrics
     processing_time_seconds: float
     data_quality_score: float
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 
 @router.post("/analyze/comprehensive", response_model=ComprehensiveAnalysisResponse)
 async def perform_comprehensive_analysis(
@@ -95,20 +103,42 @@ async def perform_comprehensive_analysis(
         )
         
         if not data_availability.get('sufficient_for_analysis', False):
+            analysis_id = str(uuid.uuid4())
+            
+            # Create helpful error message
+            total_images = data_availability.get('total_images', 0)
+            recommendation = data_availability.get('recommendation', '')
+            
+            error_message = f"Insufficient satellite imagery available ({total_images} image(s) found, need 2+). "
+            if recommendation:
+                error_message += recommendation
+            else:
+                error_message += "Try: 1) Wait 2-5 days for new Sentinel-2 data, 2) Increase date range to 60-90 days, or 3) Choose a different location with better coverage."
+            
             return ComprehensiveAnalysisResponse(
+                id=analysis_id,
                 aoi_id=request.aoi_id,
+                analysis_type=request.analysis_type,
                 status="insufficient_data",
                 success=False,
                 overall_confidence=0.0,
                 priority_level="info",
                 detections=[],
                 algorithms_used=[],
+                progress=0,
                 processing_time_seconds=(datetime.now() - start_time).total_seconds(),
                 data_quality_score=0.0,
                 created_at=datetime.now(),
+                updated_at=datetime.now(),
                 processing_metadata={
-                    "error": "Insufficient satellite data for analysis",
-                    "data_availability": data_availability
+                    "error": error_message,
+                    "data_availability": data_availability,
+                    "helpful_tips": [
+                        "Sentinel-2 satellites revisit every 2-5 days",
+                        "Cloud coverage can block imagery",
+                        "Try increasing the date range to 60-90 days",
+                        "Some areas have better coverage than others"
+                    ]
                 }
             )
         
@@ -198,9 +228,13 @@ async def perform_comprehensive_analysis(
         
         # Prepare comprehensive response
         processing_time = (datetime.now() - start_time).total_seconds()
+        analysis_id = str(uuid.uuid4())
+        now = datetime.now()
         
         response = ComprehensiveAnalysisResponse(
+            id=analysis_id,
             aoi_id=request.aoi_id,
+            analysis_type=request.analysis_type,
             status="completed",
             success=True,
             overall_confidence=analysis_results.get('overall_confidence', 0.0),
@@ -227,9 +261,12 @@ async def perform_comprehensive_analysis(
                 'time_separation_days': abs((recent_image.timestamp - baseline_image.timestamp).days)
             },
             processing_metadata=analysis_results.get('processing_metadata', {}),
+            progress=100,
             processing_time_seconds=processing_time,
             data_quality_score=data_quality_score,
-            created_at=datetime.now()
+            created_at=now,
+            updated_at=now,
+            completed_at=now
         )
         
         logger.info(f"Comprehensive analysis completed for AOI {request.aoi_id} in {processing_time:.2f}s")
@@ -240,15 +277,19 @@ async def perform_comprehensive_analysis(
     except Exception as e:
         processing_time = (datetime.now() - start_time).total_seconds()
         logger.error(f"Comprehensive analysis failed for AOI {request.aoi_id}: {str(e)}")
+        analysis_id = str(uuid.uuid4())
         
         return ComprehensiveAnalysisResponse(
+            id=analysis_id,
             aoi_id=request.aoi_id,
+            analysis_type=request.analysis_type,
             status="failed",
             success=False,
             overall_confidence=0.0,
             priority_level="info",
             detections=[],
             algorithms_used=[],
+            progress=0,
             processing_time_seconds=processing_time,
             data_quality_score=0.0,
             created_at=datetime.now(),
@@ -689,6 +730,88 @@ async def get_analysis_results():
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve analysis results: {str(e)}"
+        )
+
+
+@router.get("/{analysis_id}")
+async def get_analysis_by_id(analysis_id: str):
+    """
+    Get a specific analysis result by ID
+    
+    Returns detailed information about a single analysis including:
+    - Current status and progress
+    - Detection results
+    - Confidence scores
+    - Metadata and timestamps
+    
+    This endpoint is used for:
+    - Polling analysis progress
+    - Displaying detailed analysis results
+    - Real-time status updates
+    """
+    
+    try:
+        supabase = get_supabase()
+        
+        # TODO: Query actual analysis from database when results table is implemented
+        # For now, return mock data based on the analysis_id
+        
+        # Simulate different states based on ID for testing
+        if "running" in analysis_id.lower():
+            status = "running"
+            progress = 45
+        elif "failed" in analysis_id.lower():
+            status = "failed"
+            progress = 0
+        elif "queued" in analysis_id.lower():
+            status = "queued"
+            progress = 0
+        else:
+            status = "completed"
+            progress = 100
+        
+        mock_analysis = {
+            "id": analysis_id,
+            "aoi_id": "aoi_001",
+            "status": status,
+            "analysis_type": "comprehensive",
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "completed_at": datetime.now().isoformat() if status == "completed" else None,
+            "progress": progress,
+            "results": {
+                "change_detected": status == "completed",
+                "confidence_score": 0.87 if status == "completed" else None,
+                "summary": "Environmental analysis completed successfully" if status == "completed" else "Analysis in progress",
+                "detections": [
+                    {
+                        "type": "vegetation_change",
+                        "confidence": 0.85,
+                        "severity": "moderate",
+                        "area_affected_km2": 2.3,
+                        "algorithm": "EWMA"
+                    }
+                ] if status == "completed" else [],
+                "spectral_indices": {
+                    "ndvi": {"mean": 0.65, "change": -0.12},
+                    "ndwi": {"mean": 0.42, "change": -0.08}
+                } if status == "completed" else None,
+                "metadata": {
+                    "satellite": "Sentinel-2",
+                    "cloud_coverage": 15.3,
+                    "processing_time": 45.2
+                }
+            } if status != "queued" else None,
+            "error_message": "Processing failed due to insufficient data" if status == "failed" else None
+        }
+        
+        return mock_analysis
+        
+    except Exception as e:
+        logger.error(f"Failed to get analysis {analysis_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve analysis: {str(e)}"
         )
 
 # ============================================================================

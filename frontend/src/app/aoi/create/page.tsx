@@ -80,7 +80,7 @@ export default function CreateAOIPage() {
     tags: [],
     is_public: false,
   })
-  const [tagInput, setTagInput] = useState('')
+  const [tagInput, setTagInput] = useState<string>('')
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
 
   // Calculate polygon area (approximate)
@@ -121,7 +121,12 @@ export default function CreateAOIPage() {
   }
 
   const handleFormChange = (field: keyof AOIFormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+    // Ensure string fields remain strings
+    const sanitizedValue = (field === 'name' || field === 'description') 
+      ? String(value || '') 
+      : value
+    
+    setFormData(prev => ({ ...prev, [field]: sanitizedValue }))
     
     // Clear validation error for this field
     if (validationErrors[field]) {
@@ -408,7 +413,7 @@ export default function CreateAOIPage() {
                 <div className="pt-4">
                   <Button
                     onClick={handleSubmit}
-                    disabled={!drawnPolygon || !formData.name.trim() || isLoading}
+                    disabled={!drawnPolygon || !(formData.name || '').trim() || isLoading}
                     className="w-full"
                   >
                     {isLoading ? (

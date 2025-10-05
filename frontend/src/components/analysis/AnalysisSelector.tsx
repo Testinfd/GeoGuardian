@@ -220,6 +220,7 @@ export default function AnalysisSelector({
   className = '' 
 }: AnalysisSelectorProps) {
   const [selectedType, setSelectedType] = useState<AnalysisType | null>('comprehensive')
+  const [dateRangeDays, setDateRangeDays] = useState<number>(30)
   const [isRunning, setIsRunning] = useState(false)
   
   const { 
@@ -253,6 +254,7 @@ export default function AnalysisSelector({
         aoi_id: aoi.id,
         analysis_type: selectedType,
         geojson: aoi.geojson,
+        date_range_days: dateRangeDays,
         include_spectral_analysis: true,
         include_visualizations: true,
       })
@@ -324,6 +326,58 @@ export default function AnalysisSelector({
         </Alert>
       )}
 
+      {/* Date Range Selector */}
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 mb-3">Historical Data Range</h3>
+        <Card className="p-4">
+          <div className="flex items-start mb-3">
+            <Clock className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="font-medium text-gray-900 mb-1">How far back to search for satellite imagery?</h4>
+              <p className="text-sm text-gray-600">
+                Longer date ranges increase chances of finding sufficient data but may reduce change detection accuracy.
+                Sentinel-2 revisits every 2-5 days.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { days: 7, label: '7 Days', description: 'Very Recent', recommended: false },
+              { days: 30, label: '30 Days', description: 'Recent (Default)', recommended: true },
+              { days: 60, label: '60 Days', description: 'Extended', recommended: false },
+              { days: 90, label: '90 Days', description: 'Historical', recommended: false },
+            ].map((option) => (
+              <button
+                key={option.days}
+                onClick={() => setDateRangeDays(option.days)}
+                className={`p-3 rounded-lg border-2 text-left transition-all ${
+                  dateRangeDays === option.days
+                    ? 'border-blue-500 bg-blue-50 shadow-sm'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="font-medium text-gray-900">{option.label}</div>
+                <div className="text-xs text-gray-500 mt-1">{option.description}</div>
+                {option.recommended && dateRangeDays === option.days && (
+                  <Badge variant="success" size="sm" className="mt-2">Recommended</Badge>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-start">
+              <AlertCircle className="w-4 h-4 text-yellow-600 mr-2 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-yellow-800">
+                <strong>Tip:</strong> If you get "insufficient data" errors, try increasing the date range to 60-90 days.
+                This gives the system more historical images to work with, especially in areas with cloud cover.
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
       {/* Analysis Type Selector */}
       <div>
         <h3 className="text-lg font-medium text-gray-900 mb-3">Choose Analysis Type</h3>
@@ -363,10 +417,11 @@ export default function AnalysisSelector({
           <div>
             <h4 className="font-medium text-blue-900 mb-1">Analysis Information</h4>
             <ul className="text-sm text-blue-700 space-y-1">
-              <li>• Analysis results will be available in the dashboard once completed</li>
-              <li>• Processing time varies based on area size and analysis complexity</li>
-              <li>• You'll receive notifications when analysis is complete</li>
-              <li>• Historical data helps improve accuracy of change detection</li>
+              <li>• System will search for Sentinel-2 imagery within your selected date range</li>
+              <li>• Minimum 2 cloud-free images required for change detection analysis</li>
+              <li>• Processing time varies based on area size and analysis complexity (2-10 mins)</li>
+              <li>• Results include before/after imagery, statistical analysis, and confidence scores</li>
+              <li>• If insufficient data found, try increasing date range or different location</li>
             </ul>
           </div>
         </div>

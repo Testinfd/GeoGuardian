@@ -52,17 +52,28 @@ export const useAOIStore = create<AOIStore>()(
       
       try {
         const response = await aoiApi.createAOI(aoiData)
+        
+        // The response.data is the full AOI object from v2 endpoint
         const newAOI = response.data
         
+        // Add to store
         set((state) => ({
           aois: [...state.aois, newAOI],
           isLoading: false,
           error: null,
         }))
         
+        // Refetch to ensure consistency with backend
+        try {
+          await get().fetchAOIs()
+        } catch (fetchError) {
+          console.warn('Failed to refetch AOIs after creation:', fetchError)
+        }
+        
         return newAOI
       } catch (error: any) {
-        const errorMessage = error.response?.data?.message || 'Failed to create AOI'
+        const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || 'Failed to create AOI'
+        console.error('AOI creation error:', error)
         set({
           isLoading: false,
           error: errorMessage,
@@ -110,12 +121,24 @@ export const useAOIStore = create<AOIStore>()(
           isLoading: false,
           error: null,
         }))
+        
+        console.log(`Successfully deleted AOI ${id}`)
       } catch (error: any) {
-        const errorMessage = error.response?.data?.message || 'Failed to delete AOI'
-        set({
-          isLoading: false,
-          error: errorMessage,
-        })
+        const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || 'Failed to delete AOI'
+        console.error('AOI deletion error:', error)
+        
+        // Check if it's an auth error
+        if (error.response?.status === 401) {
+          set({
+            isLoading: false,
+            error: 'Your session has expired. Please refresh the page and try again.',
+          })
+        } else {
+          set({
+            isLoading: false,
+            error: errorMessage,
+          })
+        }
         throw error
       }
     },

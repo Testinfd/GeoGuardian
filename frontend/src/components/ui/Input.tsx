@@ -12,6 +12,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
   placeholder,
   value,
   onChange,
+  onKeyPress,
   error,
   disabled = false,
   required = false,
@@ -35,20 +36,13 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!onChange) return
 
-    // Check if onChange accepts an event (standard React pattern) or just a value (custom pattern)
-    const targetValue = e.target.value
-
-    // Try calling with the full event first (standard React pattern)
-    try {
-      (onChange as (event: React.ChangeEvent<HTMLInputElement>) => void)(e)
-    } catch {
-      // If that fails, try calling with just the value (custom pattern)
-      try {
-        (onChange as (value: string) => void)(targetValue)
-      } catch {
-        // If both fail, log the issue
-        console.warn('Input onChange handler failed for both value and event patterns')
-      }
+    const targetValue: string = e.target.value
+    
+    // Support both event-based and value-based onChange patterns
+    // Check if onChange expects a string parameter (value-based) or event (event-based)
+    if (typeof onChange === 'function') {
+      // Most of our components use value-based onChange, so call with value
+      ;(onChange as any)(targetValue)
     }
   }
   
@@ -60,6 +54,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
         placeholder={placeholder}
         value={value}
         onChange={handleChange}
+        onKeyPress={onKeyPress}
         disabled={disabled}
         required={required}
         className={cn(

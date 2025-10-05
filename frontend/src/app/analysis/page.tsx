@@ -45,15 +45,17 @@ function AnalysisCard({ analysis, onView, onCancel, onRetry, onDelete }: Analysi
   const { getAOIById } = useAOIStore()
   const aoi = getAOIById(analysis.aoi_id)
 
-  const statusConfig = {
+  const statusConfig: Record<string, { icon: any, color: string, bg: string, badge: 'default' | 'warning' | 'success' | 'danger' }> = {
     queued: { icon: Clock, color: 'text-blue-600', bg: 'bg-blue-100', badge: 'default' as const },
     running: { icon: Activity, color: 'text-yellow-600', bg: 'bg-yellow-100', badge: 'warning' as const },
     completed: { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-100', badge: 'success' as const },
     failed: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-100', badge: 'danger' as const },
     cancelled: { icon: Pause, color: 'text-gray-600', bg: 'bg-gray-100', badge: 'default' as const },
+    insufficient_data: { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-100', badge: 'warning' as const },
   }
 
-  const config = statusConfig[analysis.status]
+  // Fallback for unknown statuses
+  const config = statusConfig[analysis.status] || statusConfig.queued
   const StatusIcon = config.icon
 
   return (
@@ -126,13 +128,13 @@ function AnalysisCard({ analysis, onView, onCancel, onRetry, onDelete }: Analysi
             </Button>
           )}
           
-          {analysis.status === 'failed' && onRetry && (
+          {['failed', 'insufficient_data'].includes(analysis.status) && onRetry && (
             <Button variant="ghost" size="sm" onClick={() => onRetry(analysis)}>
               <RotateCcw className="w-4 h-4" />
             </Button>
           )}
           
-          {onDelete && ['completed', 'failed', 'cancelled'].includes(analysis.status) && (
+          {onDelete && ['completed', 'failed', 'cancelled', 'insufficient_data'].includes(analysis.status) && (
             <Button variant="ghost" size="sm" onClick={() => onDelete(analysis)}>
               <Trash2 className="w-4 h-4 text-red-500" />
             </Button>
@@ -379,6 +381,7 @@ export default function AnalysisListPage() {
               <option value="completed">Completed</option>
               <option value="failed">Failed</option>
               <option value="cancelled">Cancelled</option>
+              <option value="insufficient_data">Insufficient Data</option>
             </select>
 
             <select

@@ -24,7 +24,7 @@ export const API_ENDPOINTS = {
   ANALYSIS: {
     COMPREHENSIVE: '/api/v2/analysis/analyze/comprehensive',
     HISTORICAL: '/api/v2/analysis/analyze/historical',
-    RESULT: (id: string) => `/api/v2/analysis/result/${id}`,
+    RESULT: (id: string) => `/api/v2/analysis/${id}`,
     RESULTS: '/api/v2/analysis/results',
     DATA_AVAILABILITY: (aoiId: string) => `/api/v2/analysis/data-availability/${aoiId}`,
     STATUS: '/api/v2/analysis/system/status',
@@ -51,8 +51,8 @@ export const STORAGE_KEYS = {
 
 // Map Configuration
 export const MAP_CONFIG = {
-  DEFAULT_CENTER: { lat: 39.8283, lng: -98.5795 },
-  DEFAULT_ZOOM: 4,
+  DEFAULT_CENTER: { lat: 20.5937, lng: 78.9629 }, // India geographic center
+  DEFAULT_ZOOM: 5,
   MIN_ZOOM: 2,
   MAX_ZOOM: 18,
   TILE_LAYERS: {

@@ -29,7 +29,6 @@ import {
   RotateCcw,
   ExternalLink
 } from 'lucide-react'
-import { Navigation } from '@/components/layout'
 import { Button, Card, Badge, Loading, Alert, Progress } from '@/components/ui'
 import { SentinelMap } from '@/components/map'
 import { useAnalysisStore } from '@/stores/analysis'
@@ -121,20 +120,25 @@ interface VisualizationGalleryProps {
 
 function VisualizationGallery({ visualizations }: VisualizationGalleryProps) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
 
   const images = [
     { key: 'before_image_url', label: 'Before', url: visualizations.before_image_url },
     { key: 'after_image_url', label: 'After', url: visualizations.after_image_url },
     { key: 'difference_image_url', label: 'Difference', url: visualizations.difference_image_url },
     { key: 'gif_url', label: 'Time-lapse', url: visualizations.gif_url },
-  ].filter(img => img.url)
+  ].filter(img => img.url && !imageErrors[img.key])
+
+  const handleImageError = (key: string) => {
+    setImageErrors(prev => ({ ...prev, [key]: true }))
+  }
 
   if (images.length === 0) {
     return (
       <Card className="p-6 text-center">
         <Eye className="w-12 h-12 text-gray-400 mx-auto mb-4" />
         <h3 className="font-medium text-gray-900 mb-2">No Visualizations Available</h3>
-        <p className="text-gray-600">Visualizations are being generated...</p>
+        <p className="text-gray-600">Visualizations are being generated or may not be available yet.</p>
       </Card>
     )
   }
@@ -152,6 +156,8 @@ function VisualizationGallery({ visualizations }: VisualizationGalleryProps) {
               src={image.url}
               alt={image.label}
               className="w-full h-32 object-cover rounded-lg border border-gray-200 group-hover:border-blue-500 transition-colors"
+              onError={() => handleImageError(image.key)}
+              loading="lazy"
             />
             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 rounded-lg flex items-center justify-center">
               <ExternalLink className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -311,32 +317,29 @@ export default function AnalysisResultPage() {
 
   if (isLoading || !analysis) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navigation />
-        <div className="flex items-center justify-center py-12">
-          <Loading />
-        </div>
+      <div className="flex items-center justify-center py-12">
+        <Loading />
       </div>
     )
   }
 
   const aoi = getAOIById(analysis.aoi_id)
   
-  const statusConfig = {
+  const statusConfig: Record<string, { icon: any, color: string, bg: string, badge: 'default' | 'warning' | 'success' | 'danger' }> = {
     queued: { icon: Clock, color: 'text-blue-600', bg: 'bg-blue-100', badge: 'default' as const },
     running: { icon: Cpu, color: 'text-yellow-600', bg: 'bg-yellow-100', badge: 'warning' as const },
     completed: { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-100', badge: 'success' as const },
     failed: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-100', badge: 'danger' as const },
     cancelled: { icon: Pause, color: 'text-gray-600', bg: 'bg-gray-100', badge: 'default' as const },
+    insufficient_data: { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-100', badge: 'warning' as const },
   }
 
-  const config = statusConfig[analysis.status]
+  // Safely get config with fallback to 'queued' if status is not recognized
+  const config = statusConfig[analysis.status] || statusConfig.queued
   const StatusIcon = config.icon
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="px-4 sm:px-0 mb-6">
@@ -352,7 +355,7 @@ export default function AnalysisResultPage() {
               </Button>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 capitalize">
-                  {analysis.analysis_type.replace('_', ' ')} Analysis
+                  {analysis.analysis_type ? analysis.analysis_type.replace(/_/g, ' ') : 'Comprehensive'} Analysis
                 </h1>
                 <p className="mt-2 text-gray-600">
                   {aoi?.name || 'Unknown AOI'} • Created {new Date(analysis.created_at).toLocaleDateString()}
@@ -404,7 +407,7 @@ export default function AnalysisResultPage() {
               </Button>
             )}
 
-            {analysis.status === 'failed' && (
+            {['failed', 'insufficient_data'].includes(analysis.status) && (
               <Button variant="outline" size="sm" onClick={handleRetry}>
                 <Play className="w-4 h-4 mr-2" />
                 Retry
@@ -424,18 +427,53 @@ export default function AnalysisResultPage() {
           </Alert>
         )}
 
+        {/* Insufficient Data Warning */}
+        {analysis.status === 'insufficient_data' && (
+          <Alert variant="warning" className="mb-6">
+            <AlertTriangle className="w-4 h-4" />
+            <div>
+              <h4 className="font-medium">Insufficient Satellite Data</h4>
+              <p className="text-sm mt-1">
+                Not enough recent satellite imagery is available for this area within the selected timeframe.
+                {analysis.results?.processing_metadata?.error && ` ${analysis.results.processing_metadata.error}`}
+              </p>
+              <div className="mt-3 p-3 bg-yellow-50 rounded-md">
+                <p className="text-sm font-medium text-yellow-900 mb-2">What you can try:</p>
+                <ul className="text-sm text-yellow-800 list-disc list-inside space-y-1">
+                  <li>Wait a few days for new satellite passes over this area</li>
+                  <li>Try again with a longer time range (60-90 days)</li>
+                  <li>Check if the area has persistent cloud coverage</li>
+                  <li>Try a different location with better satellite coverage</li>
+                  {analysis.results?.processing_metadata?.helpful_tips?.map((tip: string, idx: number) => (
+                    <li key={idx}>{tip}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" variant="outline" onClick={handleRetry}>
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Try Again
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => router.push('/aoi')}>
+                  Try Different Location
+                </Button>
+              </div>
+            </div>
+          </Alert>
+        )}
+
         {/* Content based on status */}
         {analysis.status === 'completed' && analysis.results ? (
           <div className="space-y-6">
             {/* Summary */}
             <Card className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Analysis Summary</h2>
-              <p className="text-gray-700 mb-4">{analysis.results.summary}</p>
+              <p className="text-gray-700 mb-4">{analysis.results.summary || 'Analysis completed successfully.'}</p>
               
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <AnalysisMetric
                   label="Overall Confidence"
-                  value={`${Math.round((analysis.results.overall_confidence || analysis.results.confidence_score) * 100)}%`}
+                  value={`${Math.round(((analysis.results.overall_confidence || analysis.results.confidence_score) || 0) * 100)}%`}
                   icon={<TrendingUp className="w-5 h-5" />}
                   color={analysis.results.change_detected ? 'red' : 'green'}
                 />
@@ -443,11 +481,11 @@ export default function AnalysisResultPage() {
                   label="Change Detected"
                   value={analysis.results.change_detected ? 'Yes' : 'No'}
                   icon={<AlertTriangle className="w-5 h-5" />}
-                  color={analysis.results.change_detected ? 'red' : 'green'}
+                  color={analysis.results.change_detected ? 'yellow' : 'green'}
                 />
                 <AnalysisMetric
                   label="Processing Time"
-                  value={analysis.processing_time ? `${analysis.processing_time}s` : 'N/A'}
+                  value={analysis.processing_time ? `${Math.round(analysis.processing_time)}s` : 'N/A'}
                   icon={<Clock className="w-5 h-5" />}
                 />
                 <AnalysisMetric
@@ -521,6 +559,7 @@ export default function AnalysisResultPage() {
               {analysis.status === 'running' && 'Analysis is currently processing. This may take several minutes.'}
               {analysis.status === 'failed' && 'Analysis failed. Please check the error message above and try again.'}
               {analysis.status === 'cancelled' && 'Analysis was cancelled before completion.'}
+              {analysis.status === 'insufficient_data' && 'Satellite data is limited for this area and timeframe. We searched for imagery within a 30-90 day window but found insufficient data for analysis. Please see suggestions above.'}
             </p>
             
             {analysis.status === 'running' && (

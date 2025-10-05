@@ -14,11 +14,13 @@ security = HTTPBearer()
 async def verify_supabase_token(token: str) -> dict:
     """Verify Supabase JWT token"""
     try:
-        # Use Supabase's built-in user retrieval to verify the token
-        supabase = get_supabase()
+        # Use auth client (anon key) for token verification - NOT service role
+        from .database import get_supabase_auth
+        supabase = get_supabase_auth()
 
         # This will automatically verify the token and return user data
-        user_response = await supabase.auth.get_user(token)
+        # Note: supabase.auth.get_user() is synchronous in the Python SDK
+        user_response = supabase.auth.get_user(token)
 
         if user_response.user:
             # Return the user payload
@@ -35,6 +37,8 @@ async def verify_supabase_token(token: str) -> dict:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
             )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Token verification failed: {str(e)}")
         raise HTTPException(
@@ -84,11 +88,32 @@ async def get_current_user_optional(
         if not user_id or not user_email:
             return None
         
-        # For MVP: Create user object from token data, skip database lookup due to RLS
+        # Ensure user exists in database (create if doesn't exist)
+        # Using service role key, so RLS is bypassed
+        try:
+            # Check if user exists
+            existing_user = supabase.table("users").select("*").eq("id", user_id).maybe_single().execute()
+            
+            if not existing_user.data:
+                # Create user in database
+                supabase.table("users").insert({
+                    "id": user_id,
+                    "email": user_email,
+                    "name": payload.get("name", user_email.split('@')[0] if user_email else "User"),
+                    "picture": payload.get("picture"),
+                    "created_at": "now()",
+                    "updated_at": "now()"
+                }).execute()
+                print(f"✅ Created user {user_id} in database")
+        except Exception as db_error:
+            # Log but don't fail auth if database operation fails
+            print(f"Warning: Could not create user in database: {db_error}")
+        
+        # Create user object from token data
         user_data = {
             "id": user_id,
             "email": user_email,
-            "name": payload.get("name", user_email),
+            "name": payload.get("name", user_email.split('@')[0] if user_email else "User"),
             "picture": payload.get("picture"),
             "created_at": None
         }
@@ -117,16 +142,39 @@ async def get_current_user(
                 detail="Could not validate credentials"
             )
         
-        # For MVP: Create user object from token data, skip database lookup due to RLS
+        # Ensure user exists in database (create if doesn't exist)
+        # Using service role key, so RLS is bypassed
+        try:
+            # Check if user exists
+            existing_user = supabase.table("users").select("*").eq("id", user_id).maybe_single().execute()
+            
+            if not existing_user.data:
+                # Create user in database
+                supabase.table("users").insert({
+                    "id": user_id,
+                    "email": user_email,
+                    "name": payload.get("name", user_email.split('@')[0] if user_email else "User"),
+                    "picture": payload.get("picture"),
+                    "created_at": "now()",
+                    "updated_at": "now()"
+                }).execute()
+                print(f"✅ Created user {user_id} in database")
+        except Exception as db_error:
+            # Log but don't fail auth if database operation fails
+            print(f"Warning: Could not create user in database: {db_error}")
+        
+        # Create user object from token data
         user_data = {
             "id": user_id,
             "email": user_email,
-            "name": payload.get("name", user_email),
+            "name": payload.get("name", user_email.split('@')[0] if user_email else "User"),
             "picture": payload.get("picture"),
             "created_at": None
         }
         return User(**user_data)
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -232,7 +232,7 @@ async def get_aoi_by_id(
             detail=f"Failed to retrieve AOI: {str(e)}"
         )
 
-@router.post("", response_model=Dict[str, Any])
+@router.post("", response_model=EnhancedAOIResponse)
 async def create_aoi_v2(
     aoi_data: AOICreate,
     background_tasks: BackgroundTasks,
@@ -246,6 +246,7 @@ async def create_aoi_v2(
     - Automatic area calculation
     - Background analysis scheduling
     - Improved error handling
+    - Returns full AOI object
     """
     
     try:
@@ -304,6 +305,9 @@ async def create_aoi_v2(
         except Exception as e:
             logger.warning(f"Failed to calculate area for new AOI: {str(e)}")
         
+        # Current timestamp
+        now = datetime.now()
+        
         # Prepare AOI data for database (matching actual schema)
         aoi_db_data = {
             "id": aoi_id,
@@ -323,6 +327,7 @@ async def create_aoi_v2(
         }
         
         # Save to database if user is authenticated
+        saved_successfully = False
         if current_user:
             try:
                 supabase = get_supabase()
@@ -334,12 +339,20 @@ async def create_aoi_v2(
                         detail="Failed to save AOI to database"
                     )
                 
+                saved_successfully = True
                 logger.info(f"Created AOI {aoi_id} for user {current_user.id}")
                 
             except Exception as e:
                 logger.error(f"Database error creating AOI: {str(e)}")
-                # Continue without saving to database for MVP
-                pass
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to save AOI to database: {str(e)}"
+                )
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required to create AOI"
+            )
         
         # Schedule background analysis
         if aoi_data.auto_analyze:
@@ -350,19 +363,28 @@ async def create_aoi_v2(
                 aoi_data.geojson
             )
         
-        # Return success response
-        return {
-            "success": True,
-            "aoi_id": aoi_id,
-            "message": "AOI created successfully",
-            "metadata": {
-                "area_km2": area_km2,
+        # Return full AOI object
+        return EnhancedAOIResponse(
+            id=aoi_id,
+            name=aoi_data.name,
+            description=aoi_data.description,
+            geojson=aoi_data.geojson,
+            user_id=current_user.id if current_user else None,
+            created_at=now,
+            updated_at=now,
+            is_public=aoi_data.is_public or False,
+            tags=aoi_data.tags or [],
+            analysis_count=0,
+            last_analysis=None,
+            metadata={
                 "bounds": bounds,
-                "analysis_scheduled": aoi_data.auto_analyze,
-                "saved_to_database": current_user is not None
+                "created_by_api": "v2",
+                "analysis_scheduled": aoi_data.auto_analyze
             },
-            "created_at": datetime.now().isoformat()
-        }
+            status="active",
+            area_km2=area_km2,
+            bounds=bounds
+        )
         
     except HTTPException:
         raise
@@ -491,9 +513,11 @@ async def delete_aoi_v2(
 ):
     """
     Delete an AOI with enhanced access control
+    Requires authentication
     """
     
     if not current_user:
+        logger.warning(f"Unauthenticated attempt to delete AOI {aoi_id}")
         raise HTTPException(
             status_code=401,
             detail="Authentication required to delete AOI"

@@ -105,7 +105,7 @@ export type UpdateAOIRequest = {
 
 // Analysis Types
 export type AnalysisType = 'comprehensive' | 'vegetation' | 'water' | 'urban' | 'change_detection'
-export type AnalysisStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type AnalysisStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'insufficient_data'
 export type AlgorithmType = 'ewma' | 'cusum' | 'vedgesat' | 'spectral'
 
 export type AnalysisRequest = {
@@ -165,9 +165,16 @@ export type AnalysisResult = {
     visual_evidence?: any[]
     summary: string
     statistics: Record<string, number>
+    processing_metadata?: Record<string, any>
   }
   processing_time?: number
   error_message?: string
+  processing_metadata?: {
+    error?: string
+    data_availability?: Record<string, any>
+    helpful_tips?: string[]
+    [key: string]: any
+  }
   created_at: string
   updated_at: string
   completed_at?: string

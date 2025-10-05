@@ -27,7 +27,6 @@ import {
   TrendingUp,
   Clock
 } from 'lucide-react'
-import { Navigation } from '@/components/layout'
 import { Button, Card, Loading, Badge, Alert, Modal } from '@/components/ui'
 import { SentinelMap } from '@/components/map'
 import { useAOIStore } from '@/stores/aoi'
@@ -99,17 +98,36 @@ function RecentAnalysis({ analyses, onViewAnalysis }: RecentAnalysisProps) {
                   variant={
                     analysis.status === 'completed' ? 'success' :
                     analysis.status === 'failed' ? 'danger' :
-                    analysis.status === 'running' ? 'warning' : 'default'
+                    analysis.status === 'running' ? 'warning' :
+                    analysis.status === 'insufficient_data' ? 'warning' : 'default'
                   }
                   size="sm"
                 >
-                  {analysis.status}
+                  {analysis.status === 'insufficient_data' ? 'No Data' : analysis.status}
                 </Badge>
               </div>
               
-              {analysis.results?.summary && (
+              {analysis.status === 'insufficient_data' && analysis.processing_metadata?.error && (
+                <p className="text-sm text-yellow-700 mb-2 line-clamp-3">
+                  {analysis.processing_metadata.error}
+                </p>
+              )}
+              
+              {analysis.status === 'failed' && analysis.error_message && (
+                <p className="text-sm text-red-600 mb-2 line-clamp-2">
+                  {analysis.error_message}
+                </p>
+              )}
+              
+              {analysis.status === 'completed' && analysis.results?.summary && (
                 <p className="text-sm text-gray-600 mb-2 line-clamp-2">
                   {analysis.results.summary}
+                </p>
+              )}
+              
+              {analysis.status === 'running' && (
+                <p className="text-sm text-blue-600 mb-2">
+                  Processing... {analysis.progress ? `${Math.round(analysis.progress)}% complete` : ''}
                 </p>
               )}
 
@@ -278,6 +296,23 @@ export default function AOIDetailsPage() {
       const relevantAlerts = alerts.filter(alert => alert.aoi_id === aoiId)
       setAOIAlerts(relevantAlerts)
 
+      // Load analyses for this AOI
+      try {
+        const { apiClient } = await import('@/lib/api-client')
+        const analysesResponse = await apiClient.get(`/api/v2/analysis/results`)
+        const allAnalyses = Array.isArray(analysesResponse.data) ? analysesResponse.data : []
+        
+        // Filter analyses for this AOI
+        const aoiAnalyses = allAnalyses.filter((a: AnalysisResult) => a.aoi_id === aoiId)
+        setAnalyses(aoiAnalyses)
+        
+        console.log(`Loaded ${aoiAnalyses.length} analyses for AOI ${aoiId}`)
+      } catch (analysisError) {
+        console.error('Failed to load analyses:', analysisError)
+        // Don't fail the whole page if analyses fail to load
+        setAnalyses([])
+      }
+
     } catch (error) {
       console.error('Failed to load AOI data:', error)
       router.push('/aoi')
@@ -302,15 +337,22 @@ export default function AOIDetailsPage() {
     if (!aoi) return
 
     try {
-      await startAnalysis({
+      const result = await startAnalysis({
         aoi_id: aoi.id,
         analysis_type: analysisType as any,
         geojson: aoi.geojson,
       })
-      // Refresh analyses
-      loadAOIData()
-    } catch (error) {
+      
+      console.log('Analysis started:', result)
+      
+      // Wait a moment then refresh to get the new analysis
+      setTimeout(() => {
+        loadAOIData()
+      }, 1000)
+    } catch (error: any) {
       console.error('Failed to start analysis:', error)
+      // Show error message to user
+      alert(error.response?.data?.detail || error.message || 'Failed to start analysis')
     }
   }
 
@@ -341,11 +383,8 @@ export default function AOIDetailsPage() {
 
   if (aoiLoading || !aoi) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navigation />
-        <div className="flex items-center justify-center py-12">
-          <Loading />
-        </div>
+      <div className="flex items-center justify-center py-12">
+        <Loading />
       </div>
     )
   }
@@ -358,8 +397,6 @@ export default function AOIDetailsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="px-4 sm:px-0 mb-6">

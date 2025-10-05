@@ -57,6 +57,12 @@ class ApiClient {
       (response) => response,
       async (error) => {
         if (error.response?.status === 401) {
+          console.warn('API request unauthorized - attempting token refresh')
+          
+          // Clear old cache first
+          this.cachedToken = null
+          this.tokenExpiry = 0
+          
           // Token might be expired, refresh cache and retry once
           await this.refreshTokenCache()
           
@@ -67,7 +73,7 @@ class ApiClient {
             return this.client.request(error.config)
           }
           
-          console.warn('API request unauthorized - user may need to sign in')
+          console.error('API request unauthorized after refresh - user may need to sign in')
         }
         return Promise.reject(error)
       }
