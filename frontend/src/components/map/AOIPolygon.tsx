@@ -202,14 +202,15 @@ const AOIPolygon: React.FC<AOIPolygonProps> = ({
     const statusConfig = {
       queued: { icon: Clock, color: 'text-blue-600', bg: 'bg-blue-100', text: 'Queued' },
       running: { icon: Activity, color: 'text-yellow-600', bg: 'bg-yellow-100', text: 'Running' },
-      completed: { 
-        icon: recentAnalysis.results?.change_detected ? AlertTriangle : Check, 
+      completed: {
+        icon: recentAnalysis.results?.change_detected ? AlertTriangle : Check,
         color: recentAnalysis.results?.change_detected ? 'text-red-600' : 'text-green-600',
         bg: recentAnalysis.results?.change_detected ? 'bg-red-100' : 'bg-green-100',
         text: recentAnalysis.results?.change_detected ? 'Change Detected' : 'No Change'
       },
       failed: { icon: X, color: 'text-gray-600', bg: 'bg-gray-100', text: 'Failed' },
-      cancelled: { icon: X, color: 'text-gray-600', bg: 'bg-gray-100', text: 'Cancelled' }
+      cancelled: { icon: X, color: 'text-gray-600', bg: 'bg-gray-100', text: 'Cancelled' },
+      insufficient_data: { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-100', text: 'Insufficient Data' }
     }
 
     return statusConfig[recentAnalysis.status]

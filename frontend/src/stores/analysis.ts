@@ -26,6 +26,7 @@ const POLLING_INTERVALS = {
   completed: 0,    // No polling
   failed: 0,       // No polling
   cancelled: 0,    // No polling
+  insufficient_data: 0, // No polling
 }
 
 export const useAnalysisStore = create<AnalysisStore>()(
